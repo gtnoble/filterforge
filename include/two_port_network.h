@@ -10,7 +10,7 @@ typedef struct {
     double complex element22;
 } TwoPortNetwork;
 
-double complex voltageGain(TwoPortNetwork *matrix);
+double complex network_voltage_gain(TwoPortNetwork *matrix);
 
 void cascade_network(TwoPortNetwork *result, TwoPortNetwork *matrix1, TwoPortNetwork *matrix2);
 void series_connected_network(TwoPortNetwork *matrix, complex impedance);

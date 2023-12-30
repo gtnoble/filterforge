@@ -8,12 +8,7 @@
 #include "component.h"
 #include "preferred_value.h"
 
-void random_update(
-    SCM value, SCM range
-);
-
 SCM component_type;
-static SCM component_value_range_type;
 
 void init_component_type(void) {
     SCM name, slots;
@@ -41,11 +36,18 @@ SCM get_component_value(SCM component) {
     return value;
 }
 
-SCM get_component_limits(SCM component) {
+SCM get_component_lower_limit(SCM component) {
     scm_assert_foreign_object_type(component_type, component);
-    SCM limits = scm_foreign_object_ref(component, 2);
-    scm_assert_foreign_object_type(component_value_range_type, limits);
-    return limits;
+    SCM lower_limit = scm_foreign_object_ref(component, 2);
+    scm_assert_foreign_object_type(preferred_component_value_type, lower_limit);
+    return lower_limit;
+}
+
+SCM get_component_upper_limit(SCM component) {
+    scm_assert_foreign_object_type(component_type, component);
+    SCM upper_limit = scm_foreign_object_ref(component, 3);
+    scm_assert_foreign_object_type(preferred_component_value_type, upper_limit);
+    return upper_limit;
 }
 
 void random_component_update(SCM component) {

@@ -7,6 +7,10 @@
 
 SCM load_type;
 
+SCM make_component_load(SCM component);
+SCM make_series_load(SCM loads);
+SCM make_parallel_load(SCM loads);
+
 void init_load_type(void) {
     SCM name, slots;
     scm_t_struct_finalize finalizer;
@@ -18,6 +22,10 @@ void init_load_type(void) {
     );
     finalizer = NULL;
     load_type = scm_make_foreign_object_type(name, slots, finalizer);
+
+    scm_c_define_gsubr("make-component-load", 1, 0, 0, make_component_load);
+    scm_c_define_gsubr("make-series-load", 1, 0, 0, make_series_load);
+    scm_c_define_gsubr("make-parallel-load", 1, 0, 0, make_parallel_load);
 }
 
 SCM make_component_load(SCM component) {

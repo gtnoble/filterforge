@@ -29,11 +29,16 @@ const int num_e24_values = 24;
 
 SCM preferred_component_value_type;
 
+
+
 SCM floor_preferred_value(double value);
 SCM ceiling_preferred_value(double value);
-SCM nearest_preferred_value(double value);
-void increment_component_value(SCM value); 
-void decrement_component_value(SCM value);
+SCM nearest_preferred_value(SCM value_num);
+SCM increment_component_value(SCM value); 
+SCM decrement_component_value(SCM value);
+SCM random_update(
+    SCM value, SCM min_range, SCM max_range
+);
 
 bool component_values_equal(SCM value1, SCM value2);
 bool component_values_less_than(SCM value1, SCM value2);
@@ -56,6 +61,11 @@ void init_preferred_component_value_type(void) {
     );
     finalizer = NULL;
     preferred_component_value_type = scm_make_foreign_object_type(name, slots, finalizer);
+
+    scm_c_define_gsubr("nearest-preferred-value", 1, 0, 0, nearest_preferred_value);
+    scm_c_define_gsubr("increment-component-value", 1, 0, 0, increment_component_value);
+    scm_c_define_gsubr("decrement-component-value", 1, 0, 0, decrement_component_value);
+    scm_c_define_gsubr("random-compenent-value-update", 3, 0, 0, random_update);
 }
 
 SCM make_preferred_component_value(int value_index, int order_of_magnitude) {
@@ -127,8 +137,9 @@ SCM ceiling_preferred_value(double value) {
     return make_preferred_component_value((int) order_of_magnitude, eseries_index);
 }
 
-SCM nearest_preferred_value(double value) {
+SCM nearest_preferred_value(SCM value_num) {
 
+    double value = scm_to_double(value_num);
     SCM floor = floor_preferred_value(value);
     SCM ceiling = ceiling_preferred_value(value);
 
@@ -139,7 +150,7 @@ SCM nearest_preferred_value(double value) {
         return ceiling;
     }
 }
-void increment_component_value(SCM value) {
+SCM increment_component_value(SCM value) {
     int current_value_index = get_preferred_component_value_index(value);
     int current_order_of_magnitude = get_preferred_component_order_of_magnitude(value);
 
@@ -156,9 +167,10 @@ void increment_component_value(SCM value) {
 
     set_preferred_component_value_index(value, next_value_index);
     set_preferred_component_value_order_of_magnitude(value, next_order_of_magnitude);
+    return value;
 }
 
-void decrement_component_value(SCM value) {
+SCM decrement_component_value(SCM value) {
     int current_value_index = get_preferred_component_value_index(value);
     int current_order_of_magnitude = get_preferred_component_order_of_magnitude(value);
 
@@ -175,6 +187,7 @@ void decrement_component_value(SCM value) {
 
     set_preferred_component_value_index(value, next_value_index);
     set_preferred_component_value_order_of_magnitude(value, next_order_of_magnitude);
+    return value;
 }
 
 bool component_values_equal(SCM value1, SCM value2) {
@@ -226,7 +239,7 @@ bool component_values_less_than_or_equal(
         component_values_less_than(value1, value2);
 }
 
-void random_update(
+SCM random_update(
     SCM value, SCM min_range, SCM max_range
 ) {
     scm_assert_foreign_object_type(preferred_component_value_type, value);
@@ -248,4 +261,5 @@ void random_update(
             increment_component_value(value);
         }
     }
+    return value;
 }
