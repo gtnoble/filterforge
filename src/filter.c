@@ -9,6 +9,12 @@ SCM filter_stage_type;
 
 SCM series_filter_symbol;
 SCM shunt_filter_symbol;
+SCM make_shunt_filter_stage(SCM load);
+
+void init_filter_stage_type(void);
+SCM make_series_filter_stage(SCM load);
+SCM make_shunt_filter_stage(SCM load);
+SCM filter_voltage_gain(SCM angular_frequency, SCM stages);
 
 void init_filter_stage_type(void) {
     SCM name, slots;
@@ -25,8 +31,12 @@ void init_filter_stage_type(void) {
     series_filter_symbol = scm_from_utf8_symbol("series");
     shunt_filter_symbol = scm_from_utf8_symbol("shunt");
 
-    scm_c_define_gsubr("make-series-filter-stage", 1, 0, 0, make_series_filter_stage);
-    scm_c_define_gsubr("make-shunt-filter-stage", 1, 0, 0, make_shunt_filter_stage);
+    __extension__
+    scm_c_define_gsubr("make-series-filter-stage", 1, 0, 0, (scm_t_subr) make_series_filter_stage);
+    __extension__
+    scm_c_define_gsubr("make-shunt-filter-stage", 1, 0, 0, (scm_t_subr) make_shunt_filter_stage);
+    __extension__
+    scm_c_define_gsubr("filter_voltage_gain", 2, 0, 0, (scm_t_subr) filter_voltage_gain);
 }
 
 SCM make_series_filter_stage(SCM load) {
@@ -67,7 +77,7 @@ void filter_stage_network(TwoPortNetwork *network, double angular_frequency, SCM
 void get_filter_network(TwoPortNetwork *network, double angular_frequency, SCM stages) {
     identity_network(network);
     TwoPortNetwork work_area;
-    for (int i = 0; i < SCM_SIMPLE_VECTOR_LENGTH(stages); i++) {
+    for (size_t i = 0; i < SCM_SIMPLE_VECTOR_LENGTH(stages); i++) {
         SCM stage = SCM_SIMPLE_VECTOR_REF(stages, i);
         scm_assert_foreign_object_type(filter_stage_type, stage);
         filter_stage_network(&work_area, angular_frequency, stage);
@@ -75,8 +85,11 @@ void get_filter_network(TwoPortNetwork *network, double angular_frequency, SCM s
     }
 }
 
-double complex filter_voltage_gain(double angular_frequency, SCM stages) {
+SCM filter_voltage_gain(SCM angular_frequency, SCM stages) {
     TwoPortNetwork filter_network;
-    get_filter_network(&filter_network, angular_frequency, stages);
-    return network_voltage_gain(&filter_network);
+    get_filter_network(&filter_network, scm_to_double(angular_frequency), stages);
+    double complex complex_gain = network_voltage_gain(&filter_network);
+    SCM real_part = scm_from_double(creal(complex_gain));
+    SCM imag_part = scm_from_double(cimag(complex_gain));
+    return scm_make_rectangular(real_part, imag_part);
 }

@@ -6,7 +6,6 @@
 #include "load.h"
 #include "two_port_network.h"
 
-void filter_stage_network(TwoPortNetwork *network, double angular_frequency, SCM stage);
-void filter_network(TwoPortNetwork *network, double angular_frequency, SCM stages);
+void init_filter_stage_type(void);
 
 #endif

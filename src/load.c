@@ -1,6 +1,7 @@
 #include <complex.h>
 #include <stdio.h>
 #include <assert.h>
+#include <libguile.h>
 
 #include "load.h"
 #include "component.h"
@@ -23,9 +24,12 @@ void init_load_type(void) {
     finalizer = NULL;
     load_type = scm_make_foreign_object_type(name, slots, finalizer);
 
-    scm_c_define_gsubr("make-component-load", 1, 0, 0, make_component_load);
-    scm_c_define_gsubr("make-series-load", 1, 0, 0, make_series_load);
-    scm_c_define_gsubr("make-parallel-load", 1, 0, 0, make_parallel_load);
+    __extension__
+    scm_c_define_gsubr("make-component-load", 1, 0, 0, (scm_t_subr) make_component_load);
+    __extension__
+    scm_c_define_gsubr("make-series-load", 1, 0, 0, (scm_t_subr) make_series_load);
+    __extension__
+    scm_c_define_gsubr("make-parallel-load", 1, 0, 0, (scm_t_subr) make_parallel_load);
 }
 
 SCM make_component_load(SCM component) {
@@ -69,7 +73,7 @@ double complex load_impedance(double angular_frequency, SCM load) {
         double complex sumImpedance = 0;
         for (size_t i = 0; i < SCM_SIMPLE_VECTOR_LENGTH(elements); i++) {
             SCM element = SCM_SIMPLE_VECTOR_REF(elements, i);
-            scm_assert_foreign_object_type(load_type, load);
+            scm_assert_foreign_object_type(load_type, element);
             sumImpedance += load_impedance(angular_frequency, element);
         }
         return sumImpedance;
@@ -78,8 +82,8 @@ double complex load_impedance(double angular_frequency, SCM load) {
         double complex intermediate_impedance = 0;
         for (size_t i = 0; i < SCM_SIMPLE_VECTOR_LENGTH(elements); i++) {
             SCM element = SCM_SIMPLE_VECTOR_REF(elements, i);
-            scm_assert_foreign_object_type(load_type, load);
-            intermediate_impedance += 1.0 / load_impedance(angular_frequency, load);
+            scm_assert_foreign_object_type(load_type, element);
+            intermediate_impedance += 1.0 / load_impedance(angular_frequency, element);
         }
         return 1.0 / intermediate_impedance;
     }

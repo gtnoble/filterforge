@@ -1,4 +1,4 @@
-CFLAGS=-g -Wall -Wpedantic -Wextra -Werror -std=c11 `pkg-config --cflags guile-3.0` -shared -fPIC
+CFLAGS=-g -Wall -Wpedantic -Wextra -Werror -std=c11 `pkg-config --cflags guile-3.0` -shared -fPIC -Iinclude
 CC=gcc
 
 MODULE_NAME=filtopt
@@ -9,12 +9,12 @@ C_LIBRARY_DIR=lib
 C_LIBRARY=${C_LIBRARY_DIR}/filtopt.so
 
 C_SOURCE_DIR=src
-C_SOURCE=$(wildcard ${C_SOURCE_DIR}/*.scm)
+C_SOURCE=$(wildcard ${C_SOURCE_DIR}/*.c)
 
 GUILE_SOURCE_DIR=guile
 GUILE_SOURCE=$(wildcard ${GUILE_SOURCE_DIR}/*.scm)
 
-${C_LIBRARY}: 
+${C_LIBRARY}: ${C_SOURCE}
 	$(CC) $(CFLAGS) ${C_SOURCE} -o ${C_LIBRARY}
 
 .PHONY: install

@@ -53,7 +53,6 @@ void series_connected_network(TwoPortNetwork *network, complex impedance) {
     *matrix_element(1, 2, network) = impedance;
     *matrix_element(2, 1, network) = 0;
     *matrix_element(2, 2, network) = 1;
-    return network;
 }
 
 void shunt_connected_network(TwoPortNetwork *network, complex impedance) {
@@ -61,18 +60,15 @@ void shunt_connected_network(TwoPortNetwork *network, complex impedance) {
     *matrix_element(1, 2, network) = 0;
     *matrix_element(2, 1, network) = 1.0 / impedance;
     *matrix_element(2, 2, network) = 1;
-    return network;
 }
 
 void transformer_network(TwoPortNetwork *network, double turns_ratio) {
-    TwoPortNetwork *matrix = make_two_port_network();
     *matrix_element(1, 1, network) = turns_ratio;
     *matrix_element(1, 2, network) = 0;
     *matrix_element(2, 1, network) = 0;
     *matrix_element(2, 2, network) = 1.0 / turns_ratio;
-    return network;
 }
 
 void identity_network(TwoPortNetwork *network) {
-    return transformer_network(network, 1.0);
+    transformer_network(network, 1.0);
 }

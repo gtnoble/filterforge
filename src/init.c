@@ -10,8 +10,6 @@ void init_filtopt() {
     init_preferred_component_value_type();
     init_load_type();
     init_filter_stage_type();
-
-    
 }
 
 

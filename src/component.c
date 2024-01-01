@@ -10,6 +10,12 @@
 
 SCM component_type;
 
+SCM make_component(SCM type, SCM value, SCM lower_limit, SCM upper_limit);
+SCM get_component_value(SCM component);
+SCM get_component_lower_limit(SCM component);
+SCM get_component_upper_limit(SCM component);
+SCM component_random_update(SCM component);
+
 void init_component_type(void) {
     SCM name, slots;
     scm_t_struct_finalize finalizer;
@@ -23,10 +29,26 @@ void init_component_type(void) {
     );
     finalizer = NULL;
     component_type = scm_make_foreign_object_type(name, slots, finalizer);
+
+    __extension__
+    scm_c_define_gsubr("make-component", 4, 0, 0, (scm_t_subr) make_component);
+    __extension__
+    scm_c_define_gsubr("get-component-value", 1, 0, 0, (scm_t_subr) get_component_value);
+    __extension__
+    scm_c_define_gsubr("get-component-lower-limit", 1, 0, 0, (scm_t_subr) get_component_lower_limit);
+    __extension__
+    scm_c_define_gsubr("get-component-upper-limit", 1, 0, 0, (scm_t_subr) get_component_upper_limit);
+    __extension__
+    scm_c_define_gsubr("component-random-update", 1, 0, 0, (scm_t_subr) component_random_update);
 }
 
-SCM make_component(SCM type, SCM value, SCM limits) {
-    return scm_make_foreign_object_3(component_type, type, value, limits);
+SCM make_component(SCM type, SCM value, SCM lower_limit, SCM upper_limit) {
+    scm_assert_foreign_object_type(preferred_component_value_type, value);
+    scm_assert_foreign_object_type(preferred_component_value_type, lower_limit);
+    scm_assert_foreign_object_type(preferred_component_value_type, upper_limit);
+
+    SCM component_fields[] = {type, value, lower_limit, upper_limit};
+    return scm_make_foreign_object_n(component_type, 4, (void **) component_fields);
 }
 
 SCM get_component_value(SCM component) {
@@ -49,14 +71,6 @@ SCM get_component_upper_limit(SCM component) {
     scm_assert_foreign_object_type(preferred_component_value_type, upper_limit);
     return upper_limit;
 }
-
-void random_component_update(SCM component) {
-    scm_assert_foreign_object_type(component_type, component);
-    SCM value = get_component_value(component);
-    SCM limits = get_component_limits(component);
-    random_update(value, limits);
-}
-
 
 double complex component_impedance(double angular_frequency, SCM component) {
     assert(angular_frequency >= 0);
@@ -85,7 +99,34 @@ double complex component_impedance(double angular_frequency, SCM component) {
     }
 }
 
+SCM component_random_update(SCM component) {
+    scm_assert_foreign_object_type(component_type, component);
 
+    SCM value = get_component_value(component);
+    SCM min_range = get_component_lower_limit(component);
+    SCM max_range = get_component_upper_limit(component);
+
+    scm_assert_foreign_object_type(preferred_component_value_type, value);
+    scm_assert_foreign_object_type(preferred_component_value_type, min_range);
+    scm_assert_foreign_object_type(preferred_component_value_type, max_range);
+
+
+    if (component_values_equal(value, min_range)) {
+        return increment_component_value(value);
+    }
+    else if (component_values_equal(value, max_range)) {
+        return decrement_component_value(value);
+    }
+    else {
+        if(rand() < RAND_MAX / 2) {
+            decrement_component_value(value);
+        } 
+        else {
+            increment_component_value(value);
+        }
+    }
+    return value;
+}
 
 
 
