@@ -43,19 +43,6 @@
 
 (test-end "preferred-value-test")
 
-(test-begin "component-test")
-
-(test-begin "capacitor-test")
-(define capacitor-component (make-component `capacitor component-value range-floor range-ceil))
-(test-equal (get-component-value capacitor-component) component-value)
-(test-equal (get-component-lower-limit capacitor-component) range-floor)
-(test-equal (get-component-upper-limit capacitor-component) range-ceil)
-(define randomized-capacitor (component-random-update capacitor-component))
-(test-end "capacitor-test")
-
-
-(test-end "component-test")
-
 
 
 

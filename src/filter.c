@@ -15,6 +15,8 @@ void init_filter_stage_type(void);
 SCM make_series_filter_stage(SCM load);
 SCM make_shunt_filter_stage(SCM load);
 SCM filter_voltage_gain(SCM angular_frequency, SCM stages);
+SCM get_filter_stage_type(SCM filter_stage);
+SCM get_filter_stage_load(SCM filter_stage);
 
 void init_filter_stage_type(void) {
     SCM name, slots;
@@ -45,6 +47,29 @@ SCM make_series_filter_stage(SCM load) {
 
 SCM make_shunt_filter_stage(SCM load) {
     return scm_make_foreign_object_2(filter_stage_type, shunt_filter_symbol, load);
+}
+
+SCM duplicate_filter_stage(SCM filter_stage) {
+    return scm_make_foreign_object_2(
+        filter_stage_type,
+        get_filter_stage_type(filter_stage),
+        duplicate_load(get_filter_stage_load(filter_stage))
+    );
+}
+
+SCM filter_stage_random_update(SCM filter_stage) {
+    load_random_update(get_filter_stage_load(filter_stage));
+    return filter_stage;
+}
+
+SCM get_filter_stage_type(SCM filter_stage) {
+    scm_assert_foreign_object_type(filter_stage_type, filter_stage);
+    return scm_foreign_object_ref(filter_stage, 0);
+}
+
+SCM get_filter_stage_load(SCM filter_stage) {
+    scm_assert_foreign_object_type(filter_stage_type, filter_stage);
+    return scm_foreign_object_ref(filter_stage, 1);
 }
 
 void filter_stage_network(TwoPortNetwork *network, double angular_frequency, SCM stage) {

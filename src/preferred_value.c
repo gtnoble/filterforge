@@ -19,8 +19,6 @@ const int num_e24_values = 24;
 
 SCM preferred_component_value_type;
 
-
-
 SCM floor_preferred_value(SCM numeric_value);
 SCM ceiling_preferred_value(SCM numeric_value);
 SCM nearest_preferred_value(SCM value_num);
@@ -85,6 +83,13 @@ SCM make_preferred_component_value(int value_index, int order_of_magnitude) {
         preferred_component_value_type, 
         value_indexp, 
         order_of_magnitudep
+    );
+}
+
+SCM duplicate_preferred_component_value(SCM preferred_value) {
+    return make_preferred_component_value(
+        get_preferred_component_value_index(preferred_value),
+        get_preferred_component_order_of_magnitude(preferred_value)
     );
 }
 
