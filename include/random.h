@@ -1,4 +1,4 @@
-#include <libguile.h>
+#include "mtwister.h"
 
-void init_rng(void);
-unsigned long gen_random(SCM prng);
+unsigned long gen_random(MTRand *prng);
+bool gen_random_bool(MTRand *prng);

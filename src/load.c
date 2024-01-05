@@ -1,211 +1,171 @@
 #include <complex.h>
 #include <stdio.h>
 #include <assert.h>
-#include <libguile.h>
 #include <stdbool.h>
 
 #include "load.h"
 #include "component.h"
-
-SCM load_type;
-SCM component_load_symbol;
-SCM series_load_symbol;
-SCM parallel_load_symbol;
-
-SCM make_component_load(SCM component);
-SCM make_series_load(SCM loads);
-SCM make_parallel_load(SCM loads);
-SCM scm_load_impedance(SCM angular_frequency, SCM load);
-void invalid_load_type_error(void);
+#include "random.h"
 
 
-void init_load_type(void) {
-    SCM name, slots;
-    scm_t_struct_finalize finalizer;
 
-    component_load_symbol = scm_from_utf8_symbol("component");
-    series_load_symbol = scm_from_utf8_symbol("series");
-    parallel_load_symbol = scm_from_utf8_symbol("parallel");
-
-    name = scm_from_utf8_symbol("load");
-    slots = scm_list_2(
-        scm_from_utf8_symbol("type"),
-        scm_from_utf8_symbol("elements")
-    );
-    finalizer = NULL;
-    load_type = scm_make_foreign_object_type(name, slots, finalizer);
-
-    __extension__
-    scm_c_define_gsubr("make-component-load", 1, 0, 0, (scm_t_subr) make_component_load);
-    __extension__
-    scm_c_define_gsubr("make-series-load", 1, 0, 0, (scm_t_subr) make_series_load);
-    __extension__
-    scm_c_define_gsubr("make-parallel-load", 1, 0, 0, (scm_t_subr) make_parallel_load);
-    __extension__
-    scm_c_define_gsubr("impedance", 2, 0, 0, (scm_t_subr) scm_load_impedance);
-}
-
-SCM make_component_load(SCM component) {
-    scm_assert_foreign_object_type(component_type, component);
-    return scm_make_foreign_object_2(
-        load_type, 
-        scm_from_utf8_symbol("component"), 
-        component
-    );
-}
-
-SCM make_series_load(SCM loads) {
-    SCM_ASSERT_TYPE(
-        scm_is_vector(loads), 
-        loads, 
-        0, 
-        "make-series-load", 
-        "Vector of loads");
-    return scm_make_foreign_object_2(
-        load_type,
-        scm_from_utf8_symbol("series"),
-        loads
-    );
-}
-
-SCM make_parallel_load(SCM loads) {
-    SCM_ASSERT_TYPE(
-        scm_is_vector(loads), 
-        loads, 
-        0, 
-        "make-parallel-load", 
-        "Vector of loads");
-    return scm_make_foreign_object_2(
-        load_type,
-        scm_from_utf8_symbol("parallel"),
-        loads
-    );
-}
-
-SCM get_load_type(SCM load) {
-    scm_assert_foreign_object_type(load_type, load);
-    return scm_foreign_object_ref(load, 0);
-}
-
-SCM get_load_elements(SCM load) {
-    scm_assert_foreign_object_type(load_type, load);
-    return scm_foreign_object_ref(load, 1);
-}
-
-SCM load_random_update(SCM load) {
-    scm_assert_foreign_object_type(load_type, load);
-    SCM type = get_load_type(load);
-    SCM elements = get_load_elements(load);
-
-    bool is_component_load = scm_is_eq(type, component_load_symbol);
-    bool is_parallel_load = scm_is_eq(type, parallel_load_symbol);
-    bool is_series_load = scm_is_eq(type, series_load_symbol);
-
-    if (is_component_load) {
-        component_random_update(elements);
+Load *make_component_load(Component *component, void *allocate(size_t)) {
+    Load *load = allocate(sizeof(Load));
+    if (load == NULL) {
+        return NULL;
     }
-    else if (is_parallel_load || is_series_load) {
-        for (size_t i = 0; i < SCM_SIMPLE_VECTOR_LENGTH(elements); i++) {
-            load_random_update(SCM_SIMPLE_VECTOR_REF(elements, i));
-        }
-    }
-    else {
-        invalid_load_type_error();
-    }
-    return load;
+    load->type = COMPONENT_LOAD;
+    load->element.component = component;
 }
 
-SCM duplicate_load(SCM load) {
-    scm_assert_foreign_object_type(load_type, load);
-    SCM type = get_load_type(load);
-    SCM elements = get_load_elements(load);
-
-    bool is_component_load = scm_is_eq(type, component_load_symbol);
-    bool is_parallel_load = scm_is_eq(type, parallel_load_symbol);
-    bool is_series_load = scm_is_eq(type, series_load_symbol);
-
-    SCM duplicated_load;
-    if (is_component_load) {
-        duplicated_load = make_component_load(duplicate_component(elements));
+Load *make_series_load(Load *loads[], void *allocate(size_t)) {
+    Load *load = allocate(sizeof(Load));
+    if (load == NULL) {
+        return NULL;
     }
-    else if (is_series_load || is_parallel_load) {
-        SCM next_loads = scm_c_make_vector(
-            SCM_SIMPLE_VECTOR_LENGTH(elements), NULL
-        );
+    load->type = SERIES_LOAD;
+    load->element.loads = loads;
+}
 
-        for (size_t i = 0; i < SCM_SIMPLE_VECTOR_LENGTH(next_loads); i++) {
-            SCM_SIMPLE_VECTOR_SET(
-                next_loads, 
-                i, 
-                duplicate_load(SCM_SIMPLE_VECTOR_REF(elements, i))
+Load *make_parallel_load(Load *loads[], void *allocate(size_t)) {
+    Load *load = allocate(sizeof(Load));
+    if (load == NULL) {
+        return NULL;
+    }
+    load->type = PARALLEL_LOAD;
+    load->element.loads = loads;
+}
+
+void free_load(Load *load, void deallocate(void *)) {
+    if (load != NULL)
+        return; 
+    switch (load->type) {
+        case COMPONENT_LOAD:
+            free_component(load->element.component, deallocate);
+            deallocate(load);
+        case SERIES_LOAD:
+        case PARALLEL_LOAD:
+            for (size_t i = 0; i < load->num_elements; i++) {
+                free_load(load->element.loads[i], deallocate);
+            }
+            deallocate(load);
+        default:
+            assert(false);
+    }
+}
+
+void load_random_update(Load *load, MTRand *prng) {
+
+    switch (get_load_type(load)) {
+        case COMPONENT_LOAD:
+            component_random_update(load->element.component, prng);
+            break;
+        case SERIES_LOAD:
+        case PARALLEL_LOAD:
+            for (size_t i = 0; i < load->num_elements; i++) {
+                load_random_update(load->element.loads[i], prng);
+            }
+            break;
+        default:
+            assert(false);
+    }
+}
+
+Load *duplicate_load(Load *load, void *allocate(size_t), void deallocate(void *)) {
+    LoadType type = get_load_type(load);
+
+    Load *duplicated_load;
+    switch (load->type) {
+        case COMPONENT_LOAD:
+            duplicated_load = make_component_load(
+                duplicate_component(load->element.component, allocate, deallocate), 
+                allocate
             );
-        }
-        if (is_series_load) {
-            duplicated_load = make_series_load(next_loads);
-        }
-        if (is_parallel_load) {
-            duplicated_load = make_parallel_load(next_loads);
-        }
+            if (duplicated_load == NULL) {
+                return NULL;
+            }
+            break;
+        case PARALLEL_LOAD:
+        case SERIES_LOAD:
+        {
+            Load *loads[] = allocate(load->num_elements * sizeof(Load));
+            if (loads == NULL) {
+                return NULL;
+            }
 
-    }
-    else {
-        invalid_load_type_error();
+            if (load->type == PARALLEL_LOAD) {
+                duplicated_load = make_parallel_load(loads, allocate);
+            }
+            else {
+                duplicated_load = make_series_load(loads, allocate);
+            }
+
+            for (size_t i = 0; i < load->num_elements; i++) {
+                loads[i] = duplicate_load(load->element.loads[i], allocate, deallocate);
+                if (! loads[i]) {
+                    for (size_t j = 0; j < i; j++) {
+                        free_load(loads[j], deallocate);
+                    }
+                    deallocate(loads);
+                    return NULL;
+                }
+            }
+
+        }
+        break;
+        default:
+            assert(false);
     }
     return duplicated_load;
-
 }
 
-void invalid_load_type_error(void) {
-    scm_error_scm(
-        scm_from_utf8_string("invalid-load-type"), 
-        SCM_BOOL_F, 
-        scm_from_utf8_string("Invalid load type."),
-        SCM_BOOL_F,
-        SCM_BOOL_F
-    );
+void copy_load(Load *source, Load *destination) {
+    destination->type = source->type;
+    switch (source->type) {
+        case COMPONENT_LOAD:
+            copy_component(source->element.component, destination->element.component);
+            break;
+        case PARALLEL_LOAD:
+        case SERIES_LOAD:
+            for (size_t i = 0; i < source->num_elements; i++) {
+                copy_load(source->element.loads[i], destination->element.loads[i]);
+            }
+            break;
+        default:
+            assert(false);
+    }
 }
 
-
-double complex load_impedance(double angular_frequency, SCM load) {
+double complex load_impedance(double angular_frequency, Load *load) {
     assert(angular_frequency >= 0);
 
-    scm_assert_foreign_object_type(load_type, load);
-    SCM type = scm_foreign_object_ref(load, 0);
-    SCM elements = scm_foreign_object_ref(load, 1);
-
     double complex impedance;
-    if (scm_is_eq(type, scm_from_utf8_symbol("component"))) {
-        impedance = component_impedance(angular_frequency, elements);
+    switch(load->type) {
+        case COMPONENT_LOAD:
+            impedance = component_impedance(angular_frequency, load->element.component);
+            break;
+        case SERIES_LOAD: {
+            double complex sum_impedance = 0;
+            for (size_t i = 0; i < load->num_elements; i++) {
+                sum_impedance += load_impedance(angular_frequency, load->element.loads[i]);
+            }
+            impedance = sum_impedance;
+        } break;
+        case PARALLEL_LOAD: {
+            double complex intermediate_impedance = 0;
+            for (size_t i = 0; i < load->num_elements; i++) {
+                intermediate_impedance += 1.0 / load_impedance(angular_frequency, load->element.loads[i]);
+            }
+            impedance = 1.0 / intermediate_impedance;
+        } break;
+        default:
+            assert(false);
     }
-    else if (scm_is_eq(type, scm_from_utf8_symbol("series"))) {
-        double complex sumImpedance = 0;
-        for (size_t i = 0; i < SCM_SIMPLE_VECTOR_LENGTH(elements); i++) {
-            SCM element = SCM_SIMPLE_VECTOR_REF(elements, i);
-            sumImpedance += load_impedance(angular_frequency, element);
-        }
-        impedance = sumImpedance;
-    }
-    else if (scm_is_eq(type, scm_from_utf8_symbol("parallel"))) {
-        double complex intermediate_impedance = 0;
-        for (size_t i = 0; i < SCM_SIMPLE_VECTOR_LENGTH(elements); i++) {
-            SCM element = SCM_SIMPLE_VECTOR_REF(elements, i);
-            intermediate_impedance += 1.0 / load_impedance(angular_frequency, element);
-        }
-        impedance = 1.0 / intermediate_impedance;
-    }
-    else {
-        invalid_load_type_error();
-    }
+
     return impedance;
 }
 
-SCM scm_load_impedance(SCM angular_frequency, SCM load) {
-    scm_assert_foreign_object_type(load_type, load);
-    return scm_from_double(
-        load_impedance(scm_to_double(angular_frequency), load));
-}
-
-double complex admittance(double angular_frequency, SCM load) {
+double complex admittance(double angular_frequency, Load *load) {
     assert(angular_frequency >= 0);
 
     return 1.0 / load_impedance(angular_frequency, load);

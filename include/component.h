@@ -2,13 +2,36 @@
 #define FILTOPT_COMPONENT
 
 #include <complex.h>
-#include <libguile.h>
+#include <stdlib.h>
 
-extern SCM component_type;
+#include "preferred_value.h"
 
-void init_component_type(void);
-double complex component_impedance(double angular_frequency, SCM component);
-SCM duplicate_component(SCM component);
-SCM component_random_update(SCM component);
+typedef enum {
+    RESISTOR,
+    CAPACITOR,
+    INDUCTOR
+} ComponentType;
+
+typedef struct {
+    ComponentType type;
+    PreferredValue *value;
+    PreferredValue *lower_limit;
+    PreferredValue *upper_limit;
+    bool is_connected;
+} Component;
+
+Component *make_component(
+    ComponentType type, 
+    PreferredValue *value, 
+    PreferredValue *lower_limit, 
+    PreferredValue *upper_limit, 
+    bool is_connected,
+    void *allocate(size_t)
+);
+double complex component_impedance(double angular_frequency, Component *component);
+void copy_component(Component *source, Component *destination);
+Component *duplicate_component(Component *component, void *allocate(size_t), void deallocate(void *));
+void free_component(Component *component, void deallocate(void *));
+void component_random_update(Component *component, MTRand *prng);
 
 #endif

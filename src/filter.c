@@ -5,116 +5,118 @@
 #include "two_port_network.h"
 #include "filter.h"
 
-SCM filter_stage_type;
-
-SCM series_filter_symbol;
-SCM shunt_filter_symbol;
-SCM make_shunt_filter_stage(SCM load);
-
-void init_filter_stage_type(void);
-SCM make_series_filter_stage(SCM load);
-SCM make_shunt_filter_stage(SCM load);
-SCM filter_voltage_gain(SCM angular_frequency, SCM stages);
-SCM get_filter_stage_type(SCM filter_stage);
-SCM get_filter_stage_load(SCM filter_stage);
-
-void init_filter_stage_type(void) {
-    SCM name, slots;
-    scm_t_struct_finalize finalizer;
-
-    name = scm_from_utf8_symbol("filter-stage");
-    slots = scm_list_2(
-        scm_from_utf8_symbol("type"),
-        scm_from_utf8_symbol("load")
-    );
-    finalizer = NULL;
-    filter_stage_type = scm_make_foreign_object_type(name, slots, finalizer);
-
-    series_filter_symbol = scm_from_utf8_symbol("series");
-    shunt_filter_symbol = scm_from_utf8_symbol("shunt");
-
-    __extension__
-    scm_c_define_gsubr("make-series-filter-stage", 1, 0, 0, (scm_t_subr) make_series_filter_stage);
-    __extension__
-    scm_c_define_gsubr("make-shunt-filter-stage", 1, 0, 0, (scm_t_subr) make_shunt_filter_stage);
-    __extension__
-    scm_c_define_gsubr("filter_voltage_gain", 2, 0, 0, (scm_t_subr) filter_voltage_gain);
+FilterStage *make_filter_stage(Load *load, FilterType type, void *allocate(size_t)) {
+    FilterStage *stage = allocate(sizeof(FilterStage));
+    stage->type = type;
+    stage->load = load;
+    return stage;
 }
 
-SCM make_series_filter_stage(SCM load) {
-    return scm_make_foreign_object_2(filter_stage_type, series_filter_symbol, load);
+FilterStage *duplicate_filter_stage(FilterStage *stage, void *allocate(size_t), void deallocate(void *)) {
+    return make_filter_stage(duplicate_load(stage->load, allocate, deallocate), stage->type, allocate);
 }
 
-SCM make_shunt_filter_stage(SCM load) {
-    return scm_make_foreign_object_2(filter_stage_type, shunt_filter_symbol, load);
+void copy_filter_stage(FilterStage *source, FilterStage *destination) {
+    destination->type = source->type;
+    copy_load(source->load, destination->load);
 }
 
-SCM duplicate_filter_stage(SCM filter_stage) {
-    return scm_make_foreign_object_2(
-        filter_stage_type,
-        get_filter_stage_type(filter_stage),
-        duplicate_load(get_filter_stage_load(filter_stage))
-    );
+void free_filter_stage(FilterStage *stage, void deallocate(void *)) {
+    if (stage == NULL)
+        return;
+    free_load(stage->load, deallocate);
+    deallocate(stage);
 }
 
-SCM filter_stage_random_update(SCM filter_stage) {
-    load_random_update(get_filter_stage_load(filter_stage));
-    return filter_stage;
+void filter_stage_random_update(FilterStage *stage, MTRand *prng) {
+    load_random_update(stage->load, prng);
 }
 
-SCM get_filter_stage_type(SCM filter_stage) {
-    scm_assert_foreign_object_type(filter_stage_type, filter_stage);
-    return scm_foreign_object_ref(filter_stage, 0);
-}
-
-SCM get_filter_stage_load(SCM filter_stage) {
-    scm_assert_foreign_object_type(filter_stage_type, filter_stage);
-    return scm_foreign_object_ref(filter_stage, 1);
-}
-
-void filter_stage_network(TwoPortNetwork *network, double angular_frequency, SCM stage) {
-    scm_assert_foreign_object_type(filter_stage_type, stage);
-
-    SCM type = scm_foreign_object_ref(stage, 0);
-
-    SCM load = scm_foreign_object_ref(stage, 1);
-    scm_assert_foreign_object_type(load_type, load);
-
-    double complex impedance = load_impedance(angular_frequency, load);
-
-    if (scm_eq_p(type, series_filter_symbol)) {
-        series_connected_network(network, impedance);
+Filter *make_filter(
+    FilterStage *stages[], 
+    size_t num_stages, 
+    void *allocate(size_t)
+) {
+    Filter *filter = allocate(sizeof(filter));
+    if (filter == NULL) {
+        return NULL;
     }
-    else if (scm_eq_p(type, shunt_filter_symbol)) {
-        shunt_connected_network(network, impedance);
+
+    filter->stages = stages;
+    filter->num_stages = num_stages;
+    return filter;
+}
+
+Filter *duplicate_filter(
+    Filter *filter,
+    void *allocate(size_t), 
+    void deallocate(void *)
+) {
+    FilterStage *duplicated_stages[] = allocate(sizeof(FilterStage) * filter->num_stages);
+    if (duplicated_stages == NULL)
+        return NULL;
+    for (size_t i = 0; i < filter->num_stages; i++) {
+        duplicated_stages[i] = duplicate_filter_stage(filter->stages[i], allocate, deallocate);
+        if (duplicated_stages[i] == NULL) {
+            for (size_t j = 0; j < i; j++) {
+                free_filter_stage(duplicated_stages[i], deallocate);
+            }
+            deallocate(duplicated_stages);
+        }
     }
-    else {
-        scm_error_scm(
-            scm_from_utf8_string("invalid-stage-type"), 
-            SCM_BOOL_F, 
-            scm_from_utf8_string("Invalid filter stage type."),
-            SCM_BOOL_F,
-            SCM_BOOL_F
-        );
+    return make_filter(duplicated_stages, filter->num_stages, allocate);
+}
+
+void copy_filter(Filter *source, Filter *destination) {
+    for (size_t i = 0; i < source->num_stages; i++) {
+        copy_filter_stage(source->stages[i], destination->stages[i]);
     }
 }
 
-void get_filter_network(TwoPortNetwork *network, double angular_frequency, SCM stages) {
+void free_filter(Filter *filter, void deallocate(void *)) {
+    if (filter == NULL) {
+        return;
+    }
+    for (size_t i = 0; i < filter->num_stages; i++) {
+        free_filter_stage(filter->stages[i], deallocate);
+    }
+    deallocate(filter);
+}
+
+void filter_random_update(Filter *filter, MTRand *prng) {
+    for (size_t i = 0; i < filter->num_stages; i++) {
+        filter_stage_random_update(filter->stages[i], prng);
+    }
+}
+
+void filter_stage_network(TwoPortNetwork *network, double angular_frequency, FilterStage *stage) {
+
+    double complex impedance = load_impedance(angular_frequency, stage->load);
+
+    switch (stage->type) {
+        case SERIES_FILTER:
+            series_connected_network(network, impedance);
+            break;
+        case SHUNT_FILTER:
+            shunt_connected_network(network, impedance);
+            break;
+        default:
+            assert(false);
+    }
+}
+
+void get_filter_network(TwoPortNetwork *network, double angular_frequency, Filter *filter) {
     identity_network(network);
     TwoPortNetwork work_area;
-    for (size_t i = 0; i < SCM_SIMPLE_VECTOR_LENGTH(stages); i++) {
-        SCM stage = SCM_SIMPLE_VECTOR_REF(stages, i);
-        scm_assert_foreign_object_type(filter_stage_type, stage);
-        filter_stage_network(&work_area, angular_frequency, stage);
+    for (size_t i = 0; i < filter->num_stages; i++) {
+        filter_stage_network(&work_area, angular_frequency, filter->stages[i]);
         cascade_network(network, network, &work_area);
     }
 }
 
-SCM filter_voltage_gain(SCM angular_frequency, SCM stages) {
+double complex filter_voltage_gain(double angular_frequency, Filter *filter) {
     TwoPortNetwork filter_network;
-    get_filter_network(&filter_network, scm_to_double(angular_frequency), stages);
+    get_filter_network(&filter_network, angular_frequency, filter);
     double complex complex_gain = network_voltage_gain(&filter_network);
-    SCM real_part = scm_from_double(creal(complex_gain));
-    SCM imag_part = scm_from_double(cimag(complex_gain));
-    return scm_make_rectangular(real_part, imag_part);
+    return complex_gain;
 }

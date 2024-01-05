@@ -3,211 +3,141 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <complex.h>
-#include <libguile.h>
 
 #include "component.h"
 #include "preferred_value.h"
 #include "random.h"
+#include "mtwister.h"
 
-SCM component_type;
-
-SCM make_component(
-    SCM type, 
-    SCM value, 
-    SCM lower_limit, 
-    SCM upper_limit, 
-    SCM is_connected,
-    SCM prng
+Component *make_component(
+    ComponentType type, 
+    PreferredValue *value, 
+    PreferredValue *lower_limit, 
+    PreferredValue *upper_limit, 
+    bool is_connected,
+    void *allocate(size_t)
 );
-SCM get_component_value(SCM component);
-SCM get_component_type(SCM component);
-SCM get_component_lower_limit(SCM component);
-SCM get_component_upper_limit(SCM component);
-SCM get_component_is_connected(SCM component);
-SCM set_component_is_connected(SCM is_connected, SCM component);
-SCM get_component_prng(SCM component);
 
-
-void init_component_type(void) {
-    SCM name, slots;
-    scm_t_struct_finalize finalizer;
-
-    name = scm_from_utf8_symbol("component");
-    slots = scm_list_n(
-        scm_from_utf8_symbol("type"),
-        scm_from_utf8_symbol("value"),
-        scm_from_utf8_symbol("lower-limit"),
-        scm_from_utf8_symbol("upper-limit"),
-        scm_from_utf8_symbol("is-connected"),
-        scm_from_utf8_symbol("random-number-generator"),
-        SCM_UNDEFINED
-    );
-    finalizer = NULL;
-    component_type = scm_make_foreign_object_type(name, slots, finalizer);
-
-    __extension__
-    scm_c_define_gsubr("make-component", 4, 0, 0, (scm_t_subr) make_component);
-    __extension__
-    scm_c_define_gsubr("get-component-value", 1, 0, 0, (scm_t_subr) get_component_value);
-    __extension__
-    scm_c_define_gsubr("get-component-lower-limit", 1, 0, 0, (scm_t_subr) get_component_lower_limit);
-    __extension__
-    scm_c_define_gsubr("get-component-upper-limit", 1, 0, 0, (scm_t_subr) get_component_upper_limit);
-    __extension__
-    scm_c_define_gsubr("component-random-update", 1, 0, 0, (scm_t_subr) component_random_update);
-    __extension__
-    scm_c_define_gsubr("component-connected?", 1, 0, 0, (scm_t_subr) get_component_is_connected);
-    __extension__
-    scm_c_define_gsubr("set-component-connected", 2, 0, 0, (scm_t_subr) set_component_is_connected);
-    __extension__
-    scm_c_define_gsubr("duplicate-component", 1, 0, 0, (scm_t_subr) duplicate_component);
-
-}
-
-SCM make_component(
-    SCM type, 
-    SCM value, 
-    SCM lower_limit, 
-    SCM upper_limit, 
-    SCM is_connected,
-    SCM prng
+Component *make_component(
+    ComponentType type, 
+    PreferredValue *value, 
+    PreferredValue *lower_limit, 
+    PreferredValue *upper_limit, 
+    bool is_connected,
+    void *allocate(size_t)
 ) {
-    scm_assert_foreign_object_type(preferred_component_value_type, value);
-    scm_assert_foreign_object_type(preferred_component_value_type, lower_limit);
-    scm_assert_foreign_object_type(preferred_component_value_type, upper_limit);
 
-    SCM component_fields[] = 
-        {type, value, lower_limit, upper_limit, is_connected, prng};
-    return scm_make_foreign_object_n(component_type, 6, (void **) component_fields);
+    Component *component = allocate(sizeof(Component));
+    component->type = type;
+    component->value = value;
+    component->lower_limit = lower_limit;
+    component->upper_limit = upper_limit;
+    component->is_connected = is_connected;
+    return component;
 }
 
-SCM duplicate_component(SCM component) {
-    scm_assert_foreign_object_type(component_type, component);
-    return make_component(
-        get_component_type(component),
-        duplicate_preferred_component_value(get_component_value(component)),
-        duplicate_preferred_component_value(
-            get_component_lower_limit(component)
-        ),
-        duplicate_preferred_component_value(
-            get_component_upper_limit(component)
-        ),
-        get_component_is_connected(component),
-        get_component_prng(component)
+void free_component(Component *component, void deallocate(void *)) {
+    if (component == NULL)
+        return;
+    free_preferred_value(component->upper_limit, deallocate);
+    free_preferred_value(component->lower_limit, deallocate);
+    free_preferred_value(component->value, deallocate);
+    deallocate(component);
+}
+
+Component *duplicate_component(Component *component, void *allocate(size_t), void deallocate(void *)) {
+    PreferredValue *value = duplicate_preferred_value(component->value, allocate);
+    if (value == NULL) {
+        goto value_alloc_failure;
+    }
+    PreferredValue *lower_limit = duplicate_preferred_value(
+        component->lower_limit,
+        allocate
     );
+    if (lower_limit == NULL) {
+        goto lower_limit_alloc_failure;
+    }
+
+    PreferredValue *upper_limit = duplicate_preferred_value(
+        component->upper_limit,
+        allocate
+    );
+    if (upper_limit == NULL) {
+        goto upper_limit_alloc_failure;
+    }
+
+
+    return make_component(
+        component->type,
+        value,
+        lower_limit,
+        upper_limit,
+        component->is_connected,
+        allocate
+    );
+
+    upper_limit_alloc_failure:
+        free_preferred_value(lower_limit, deallocate);
+    lower_limit_alloc_failure:
+        free_preferred_value(value, deallocate);
+    value_alloc_failure:
+        return NULL;
 }
 
-SCM get_component_type(SCM component) {
-    scm_assert_foreign_object_type(component_type, component);
-    SCM type = scm_foreign_object_ref(component, 0);
-    return type;
+void copy_component(Component *source, Component *destination) {
+    copy_preferred_value(source->lower_limit, destination->lower_limit);
+    copy_preferred_value(source->upper_limit, destination->upper_limit);
+    copy_preferred_value(source->value, destination->value);
+
+    destination->type = source->type;
+    destination->is_connected = source->is_connected;
 }
 
-SCM get_component_value(SCM component) {
-    scm_assert_foreign_object_type(component_type, component);
-    SCM value = scm_foreign_object_ref(component, 1);
-    scm_assert_foreign_object_type(preferred_component_value_type, value);
-    return value;
-}
 
-SCM get_component_lower_limit(SCM component) {
-    scm_assert_foreign_object_type(component_type, component);
-    SCM lower_limit = scm_foreign_object_ref(component, 2);
-    scm_assert_foreign_object_type(preferred_component_value_type, lower_limit);
-    return lower_limit;
-}
-
-SCM get_component_upper_limit(SCM component) {
-    scm_assert_foreign_object_type(component_type, component);
-    SCM upper_limit = scm_foreign_object_ref(component, 3);
-    scm_assert_foreign_object_type(preferred_component_value_type, upper_limit);
-    return upper_limit;
-}
-
-SCM get_component_is_connected(SCM component) {
-    scm_assert_foreign_object_type(component_type, component);
-    SCM is_connected = scm_foreign_object_ref(component, 4);
-    return is_connected;
-}
-
-SCM set_component_is_connected(SCM is_connected, SCM component) {
-    scm_assert_foreign_object_type(component_type, component);
-    scm_foreign_object_set_x(component, 4, is_connected);
-    return is_connected;
-}
-
-SCM get_component_prng(SCM component) {
-    scm_assert_foreign_object_type(component_type, component);
-    SCM prng = scm_foreign_object_ref(component, 5);
-    return prng;
-}
-
-double complex component_impedance(double angular_frequency, SCM component) {
+double complex component_impedance(double angular_frequency, Component *component) {
     assert(angular_frequency >= 0);
-    scm_assert_foreign_object_type(component_type, component);
 
-    if(scm_is_false(get_component_is_connected(component))) {
+    if(! component->is_connected) {
         return INFINITY;
     }
 
-    SCM type = get_component_type(component);
-    double value = evaluated_component_value(get_component_value(component));
+    double value = evaluate_preferred_value(component->value);
 
-    if (scm_eq_p(type, scm_from_utf8_symbol("resistor"))) {
-        return value;
+    double complex impedance;
+    switch (component->type) {
+        case RESISTOR:
+            impedance = value;
+            break;
+        case CAPACITOR:
+            impedance = 1.0 / (I * angular_frequency * value);
+            break;
+        case INDUCTOR:
+            impedance = I * angular_frequency * value;
+            break;
+        default:
+            assert(false);
     }
-    else if (scm_eq_p(type, scm_from_utf8_symbol("capacitor"))) {
-        return 1.0 / (I * angular_frequency * value);
-    }
-    else if (scm_eq_p(type, scm_from_utf8_symbol("inductor"))) {
-        return I * angular_frequency * value;
-    }
-    else {
-        scm_error_scm(
-            scm_from_utf8_string("invalid-component-type"), 
-            SCM_BOOL_F, 
-            scm_from_utf8_string("Invalid component type."),
-            SCM_BOOL_F,
-            SCM_BOOL_F
-        );
-    }
+    return impedance;
 }
 
-SCM component_random_update(SCM component) {
-    scm_assert_foreign_object_type(component_type, component);
+void component_random_update(Component *component, MTRand *prng) {
 
-    SCM value = get_component_value(component);
-    SCM min_range = get_component_lower_limit(component);
-    SCM max_range = get_component_upper_limit(component);
+    component->is_connected = gen_random_bool(prng);
 
-    scm_assert_foreign_object_type(preferred_component_value_type, value);
-    scm_assert_foreign_object_type(preferred_component_value_type, min_range);
-    scm_assert_foreign_object_type(preferred_component_value_type, max_range);
-
-    SCM prng = get_component_prng(component);
-
-    if (gen_random_bool(prng)) {
-        set_component_is_connected(SCM_BOOL_T, component);
+    if (component_values_equal(component->value, component->lower_limit)) {
+        increment_component_value(component->value);
     }
-    else {
-        set_component_is_connected(SCM_BOOL_F, component);
-    }
-
-    if (component_values_equal(value, min_range)) {
-        return increment_component_value(value);
-    }
-    else if (component_values_equal(value, max_range)) {
-        return decrement_component_value(value);
+    else if (component_values_equal(component->value, component->upper_limit)) {
+        decrement_component_value(component->value);
     }
     else {
         if(gen_random_bool(prng)) {
-            decrement_component_value(value);
+            decrement_component_value(component->value);
         } 
         else {
-            increment_component_value(value);
+            increment_component_value(component->value);
         }
     }
-    return value;
 }
 
 
