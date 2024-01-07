@@ -18,7 +18,7 @@ void guile_free(void *) {
     return;
 }
 
-FilterType guile_to_filter_type(SCM filter_type) {
+FilterStageType guile_to_filter_type(SCM filter_type) {
     if (scm_is_eq(filter_type, scm_from_utf8_symbol("series")))
         return SERIES_FILTER;
     else if (scm_is_eq(filter_type, scm_from_utf8_symbol("shunt")))

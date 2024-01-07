@@ -6,49 +6,137 @@
 #include "load.h"
 #include "component.h"
 #include "random.h"
+#include "memory.h"
 
+Load *new_compound_load(
+    Load *loads[], 
+    size_t num_loads,
+    LoadType type, 
+    MemoryManager memory
+);
 
-
-Load *make_component_load(Component *component, void *allocate(size_t)) {
-    Load *load = allocate(sizeof(Load));
+Load *new_component_load(
+    Component *component, 
+    MemoryManager memory
+) {
+    Load *load = memory.allocate(sizeof(Load));
     if (load == NULL) {
         return NULL;
     }
     load->type = COMPONENT_LOAD;
+    load->num_elements = 1;
     load->element.component = component;
+    load->deallocate = memory.deallocate;
+    return load;
 }
 
-Load *make_series_load(Load *loads[], void *allocate(size_t)) {
-    Load *load = allocate(sizeof(Load));
+Load *make_component_load(
+    const Component *component, 
+    MemoryManager memory
+) {
+    Component *duplicated_component = duplicate_component(component, memory);
+    if (duplicate_component == NULL) {
+        goto component_duplication_failure;
+    }
+
+    Load *load = new_component_load(duplicated_component, memory);
+    if (load == NULL) {
+        goto load_alloc_failure;
+    }
+
+    return load;
+
+    load_alloc_failure:
+        free_component(duplicate_component);
+    component_duplication_failure:
+        return NULL;
+}
+
+Load *new_compound_load(
+    Load *loads[], 
+    size_t num_loads,
+    LoadType type, 
+    MemoryManager memory
+) {
+    Load *load = memory.allocate(sizeof(Load));
     if (load == NULL) {
         return NULL;
     }
-    load->type = SERIES_LOAD;
+
     load->element.loads = loads;
+    load->num_elements = num_loads;
+    load->type = type;
+    load->deallocate = memory.deallocate;
+
+    return load;
 }
 
-Load *make_parallel_load(Load *loads[], void *allocate(size_t)) {
-    Load *load = allocate(sizeof(Load));
-    if (load == NULL) {
-        return NULL;
+Load *make_compound_load(
+    const Load *loads[], 
+    size_t num_loads,
+    LoadType type, 
+    MemoryManager memory
+) {
+    Load *duplicated_loads[] = memory.allocate(sizeof(Load *) * num_loads);
+    if (duplicated_loads == NULL) {
+        goto duplicated_loads_alloc_failure;
     }
-    load->type = PARALLEL_LOAD;
-    load->element.loads = loads;
+
+    size_t last_successfully_duplicated_load;
+    for (size_t i = 0; i < num_loads; i++) {
+        Load *duplicated_load = duplicate_load(loads[i], memory);
+        if (duplicate_load == NULL) {
+            last_successfully_duplicated_load = i - 1;
+            goto load_duplication_failure;
+        }
+        duplicated_loads[i] = duplicated_load;
+    }
+
+    Load *load = new_compound_load(duplicated_loads, num_loads, type, memory);
+    if (load == NULL) {
+        goto load_alloc_failure;
+    }
+
+    return load;
+        
+    load_alloc_failure:
+        for (size_t i = 0; i <= last_successfully_duplicated_load; i++) {
+            free_load(duplicated_loads[i]);
+        }
+    load_duplication_failure:
+        memory.deallocate(duplicated_loads);
+    duplicated_loads_alloc_failure:
+        return NULL;
 }
 
-void free_load(Load *load, void deallocate(void *)) {
+Load *new_series_load(Load *loads[], size_t num_loads, MemoryManager memory) {
+    return new_compound_load(loads, num_loads, SERIES_LOAD, memory);
+}
+
+Load *make_series_load(const Load *loads[], size_t num_loads, MemoryManager memory) {
+    return make_compound_load(loads, num_loads, SERIES_LOAD, memory);
+}
+
+Load *new_parallel_load(Load *loads[], size_t num_loads, MemoryManager memory) {
+    return new_compound_load(loads, num_loads, PARALLEL_LOAD, memory);
+}
+Load *make_parallel_load(const Load *loads[], size_t num_loads, MemoryManager memory) {
+    return make_compound_load(loads, num_loads, PARALLEL_LOAD, memory);
+}
+
+void free_load(Load *load) {
     if (load != NULL)
         return; 
     switch (load->type) {
         case COMPONENT_LOAD:
-            free_component(load->element.component, deallocate);
-            deallocate(load);
+            free_component(load->element.component);
+            load->deallocate(load);
         case SERIES_LOAD:
         case PARALLEL_LOAD:
             for (size_t i = 0; i < load->num_elements; i++) {
-                free_load(load->element.loads[i], deallocate);
+                free_load(load->element.loads[i]);
             }
-            deallocate(load);
+            load->deallocate(load);
         default:
             assert(false);
     }
@@ -71,47 +159,21 @@ void load_random_update(Load *load, MTRand *prng) {
     }
 }
 
-Load *duplicate_load(Load *load, void *allocate(size_t), void deallocate(void *)) {
+Load *duplicate_load(Load *load, MemoryManager memory) {
     LoadType type = get_load_type(load);
 
     Load *duplicated_load;
     switch (load->type) {
         case COMPONENT_LOAD:
-            duplicated_load = make_component_load(
-                duplicate_component(load->element.component, allocate, deallocate), 
-                allocate
-            );
-            if (duplicated_load == NULL) {
-                return NULL;
-            }
-            break;
+            duplicated_load = make_component_load(load->element.component, memory);
         case PARALLEL_LOAD:
         case SERIES_LOAD:
-        {
-            Load *loads[] = allocate(load->num_elements * sizeof(Load));
-            if (loads == NULL) {
-                return NULL;
-            }
-
-            if (load->type == PARALLEL_LOAD) {
-                duplicated_load = make_parallel_load(loads, allocate);
-            }
-            else {
-                duplicated_load = make_series_load(loads, allocate);
-            }
-
-            for (size_t i = 0; i < load->num_elements; i++) {
-                loads[i] = duplicate_load(load->element.loads[i], allocate, deallocate);
-                if (! loads[i]) {
-                    for (size_t j = 0; j < i; j++) {
-                        free_load(loads[j], deallocate);
-                    }
-                    deallocate(loads);
-                    return NULL;
-                }
-            }
-
-        }
+            duplicated_load = make_compound_load(
+                load->element.loads, 
+                load->num_elements, 
+                load->type, 
+                memory
+            );
         break;
         default:
             assert(false);

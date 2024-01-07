@@ -4,6 +4,7 @@
 #include <assert.h>
 
 #include "preferred_value.h"
+#include "memory.h"
 
 const double e24_values[] = {
     1.0, 1.1, 1.2, 
@@ -18,49 +19,47 @@ const double e24_values[] = {
 
 const int num_e24_values = 24;
 
-void increment_preferred_value(PreferredValue *value);
-void decrement_preferred_value(PreferredValue *value);
-
-bool preferred_values_equal(PreferredValue *value1, PreferredValue *value2);
-bool preferrred_values_less_than(PreferredValue *value1, PreferredValue *value2);
+bool preferrred_values_less_than(const PreferredValue *value1, const PreferredValue *value2);
 bool preferred_values_less_than_or_equal(
-    PreferredValue *value1, PreferredValue *value2
+    const PreferredValue *value1, const PreferredValue *value2
 );
 bool preferred_values_less_than_or_equal(
-    PreferredValue *value1, PreferredValue *value2
+    const PreferredValue *value1, const PreferredValue *value2
 );
 
-PreferredValue *make_preferred_value(int value_index, int order_of_magnitude, void *allocate(size_t)) {
-    PreferredValue *preferred_value = allocate(sizeof(PreferredValue));
+
+PreferredValue *make_preferred_value(int value_index, int order_of_magnitude, MemoryManager memory) {
+    PreferredValue *preferred_value = memory.allocate(sizeof(PreferredValue));
     if (preferred_value == NULL)
         return NULL;
     preferred_value->index = value_index;
     preferred_value->order_of_magnitude = order_of_magnitude;
+    preferred_value->deallocate = memory.deallocate;
     return preferred_value;
 }
 
-void free_preferred_value(PreferredValue *value, void deallocate(void *)) {
-    deallocate(value);
+void free_preferred_value(PreferredValue *value) {
+    value->deallocate(value);
 }
 
-PreferredValue *duplicate_preferred_value(PreferredValue *preferred_value, void *allocate(size_t)) {
+PreferredValue *duplicate_preferred_value(const PreferredValue *preferred_value, MemoryManager memory) {
     return make_preferred_value(
-        get_preferred_value_index(preferred_value),
-        get_preferred_value_order_of_magnitude(preferred_value),
-        allocate
+        preferred_value->index,
+        preferred_value->order_of_magnitude,
+        memory
     );
 }
 
-void copy_preferred_value(PreferredValue *source, PreferredValue *destination) {
+void copy_preferred_value(const PreferredValue *source, PreferredValue *destination) {
     destination->index = source->index;
     destination->order_of_magnitude = source->order_of_magnitude;
 }
 
-double evaluate_preferred_value(PreferredValue *preferred_value) {
+double evaluate_preferred_value(const PreferredValue *preferred_value) {
     return pow(10.0, preferred_value->order_of_magnitude) * e24_values[preferred_value->index];
 }
 
-void floor_preferred_value(double numeric_value, PreferredValue *output) {
+PreferredValue floor_preferred_value(double numeric_value) {
     assert(numeric_value > 0);
 
     double log_value = log10(numeric_value);
@@ -72,13 +71,16 @@ void floor_preferred_value(double numeric_value, PreferredValue *output) {
         }
     }
 
-    output->index = eseries_index;
-    output->order_of_magnitude = order_of_magnitude;
-
-    assert(evaluate_preferred_value(output) <= numeric_value);
+    PreferredValue output = {
+        .index = eseries_index,
+        .order_of_magnitude = order_of_magnitude,
+        .deallocate = NULL
+    };
+    assert(evaluate_preferred_value(&output) <= numeric_value);
+    return output;
 }
 
-void ceiling_preferred_value(double numeric_value, PreferredValue *output) {
+PreferredValue ceiling_preferred_value(double numeric_value) {
     assert(numeric_value > 0);
 
     double log_value = log10(numeric_value);
@@ -90,29 +92,29 @@ void ceiling_preferred_value(double numeric_value, PreferredValue *output) {
         }
     }
 
-    output->index = eseries_index;
-    output->order_of_magnitude = order_of_magnitude;
-
-    assert(evaluate_preferred_value(output) >= numeric_value);
+    PreferredValue output = {
+        .index = eseries_index,
+        .order_of_magnitude = order_of_magnitude,
+        .deallocate = NULL
+    };
+    assert(evaluate_preferred_value(&output) >= numeric_value);
+    return output;
 }
 
-void nearest_preferred_value(double value_num, PreferredValue *output) {
-    assert(value_num > 0);
+PreferredValue nearest_preferred_value(double numeric_value) {
+    assert(numeric_value > 0);
 
-    PreferredValue floor;
-    floor_preferred_value(value_num, &floor);
-
-    PreferredValue ceiling;
-    ceiling_preferred_value(value_num, &ceiling);
+    PreferredValue floor = floor_preferred_value(numeric_value);
+    PreferredValue ceiling = ceiling_preferred_value(numeric_value);
 
     if (
-        fabs(evaluate_preferred_value(&floor) - value_num) <= 
-        fabs(evaluate_preferred_value(&ceiling) - value_num)
+        fabs(evaluate_preferred_value(&floor) - numeric_value) <= 
+        fabs(evaluate_preferred_value(&ceiling) - numeric_value)
     ) {
-        *output = floor;
+        return floor;
     }
     else {
-        *output = ceiling;
+        return ceiling;
     }
 }
 
@@ -152,13 +154,13 @@ void decrement_preferred_value(PreferredValue *value) {
     *value = next_value;
 }
 
-bool preferred_values_equal(PreferredValue *value1, PreferredValue *value2) {
+bool preferred_values_equal(const PreferredValue *value1, const PreferredValue *value2) {
     return 
         (value1->index == value2->index && 
         value1->order_of_magnitude == value2->order_of_magnitude);
 }
 
-bool preferrred_values_less_than(PreferredValue *value1, PreferredValue *value2) {
+bool preferrred_values_less_than(const PreferredValue *value1, const PreferredValue *value2) {
     if (value1->order_of_magnitude < value2->order_of_magnitude) {
         return true;
     }
@@ -171,12 +173,12 @@ bool preferrred_values_less_than(PreferredValue *value1, PreferredValue *value2)
     return false;
 }
 
-bool preferred_values_greater_than(PreferredValue *value1, PreferredValue *value2) {
+bool preferred_values_greater_than(const PreferredValue *value1, const PreferredValue *value2) {
     return !preferred_values_equal(value1, value2) && !preferrred_values_less_than(value1,value2);
 }
 
 bool preferred_values_greater_than_or_equal(
-    PreferredValue *value1, PreferredValue *value2
+    const PreferredValue *value1, const PreferredValue *value2
 ) {
     return 
         preferred_values_equal(value1, value2) || 
@@ -184,7 +186,7 @@ bool preferred_values_greater_than_or_equal(
 }
 
 bool preferred_values_less_than_or_equal(
-    PreferredValue *value1, PreferredValue *value2
+    const PreferredValue *value1, const PreferredValue *value2
 ) {
     return 
         preferred_values_equal(value1, value2) || 

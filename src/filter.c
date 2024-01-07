@@ -1,19 +1,50 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include "memory.h"
 #include "load.h"
 #include "two_port_network.h"
 #include "filter.h"
 
-FilterStage *make_filter_stage(Load *load, FilterType type, void *allocate(size_t)) {
-    FilterStage *stage = allocate(sizeof(FilterStage));
-    stage->type = type;
+FilterStage *new_filter_stage(Load *load, FilterStageType type, MemoryManager memory) {
+    FilterStage *stage = memory.allocate(sizeof(FilterStage));
+    if (stage == NULL) {
+        return NULL;
+    }
+
     stage->load = load;
+    stage->type = type;
+    stage->deallocate = memory.deallocate;
+
     return stage;
 }
 
-FilterStage *duplicate_filter_stage(FilterStage *stage, void *allocate(size_t), void deallocate(void *)) {
-    return make_filter_stage(duplicate_load(stage->load, allocate, deallocate), stage->type, allocate);
+FilterStage *make_filter_stage(
+    const Load *load, 
+    FilterStageType type, 
+    MemoryManager memory
+) {
+    Load *duplicated_load = duplicate_load(load, memory);
+    if (duplicated_load == NULL) {
+        goto load_duplication_failure;
+    }
+
+    FilterStage *stage = new_filter_stage(duplicated_load, type, memory);
+    if (stage == NULL) {
+        goto stage_alloc_failure;
+    }
+
+    return stage;
+
+    stage_alloc_failure:
+        free_load(duplicated_load);
+    load_duplication_failure:
+        return NULL;
+}
+
+FilterStage *duplicate_filter_stage(
+    const FilterStage *stage, MemoryManager memory) {
+    return make_filter_stage(stage->load, stage->type, memory);
 }
 
 void copy_filter_stage(FilterStage *source, FilterStage *destination) {
@@ -21,50 +52,76 @@ void copy_filter_stage(FilterStage *source, FilterStage *destination) {
     copy_load(source->load, destination->load);
 }
 
-void free_filter_stage(FilterStage *stage, void deallocate(void *)) {
+void free_filter_stage(FilterStage *stage) {
     if (stage == NULL)
         return;
-    free_load(stage->load, deallocate);
-    deallocate(stage);
+    free_load(stage->load);
+    stage->deallocate(stage);
 }
 
 void filter_stage_random_update(FilterStage *stage, MTRand *prng) {
     load_random_update(stage->load, prng);
 }
 
-Filter *make_filter(
+Filter *new_filter(
     FilterStage *stages[], 
     size_t num_stages, 
-    void *allocate(size_t)
+    MemoryManager memory
 ) {
-    Filter *filter = allocate(sizeof(filter));
+    Filter *filter = memory.allocate(sizeof(filter));
     if (filter == NULL) {
         return NULL;
     }
-
     filter->stages = stages;
     filter->num_stages = num_stages;
+    filter->deallocate = memory.deallocate;
+    
     return filter;
 }
 
-Filter *duplicate_filter(
-    Filter *filter,
-    void *allocate(size_t), 
-    void deallocate(void *)
+Filter *make_filter(
+    const FilterStage *stages[], 
+    size_t num_stages, 
+    MemoryManager memory
 ) {
-    FilterStage *duplicated_stages[] = allocate(sizeof(FilterStage) * filter->num_stages);
-    if (duplicated_stages == NULL)
-        return NULL;
-    for (size_t i = 0; i < filter->num_stages; i++) {
-        duplicated_stages[i] = duplicate_filter_stage(filter->stages[i], allocate, deallocate);
-        if (duplicated_stages[i] == NULL) {
-            for (size_t j = 0; j < i; j++) {
-                free_filter_stage(duplicated_stages[i], deallocate);
-            }
-            deallocate(duplicated_stages);
-        }
+    FilterStage *duplicated_stages[] = memory.allocate(sizeof(FilterStage *));
+    if (duplicated_stages == NULL) {
+        goto stages_alloc_failure;
     }
-    return make_filter(duplicated_stages, filter->num_stages, allocate);
+
+    size_t last_allocated_stage_index;
+    for (size_t i = 0; i < num_stages; i++) {
+        FilterStage *duplicated_stage = 
+            duplicate_filter_stage(stages[i], memory);
+        if (duplicated_stage == NULL) {
+            last_allocated_stage_index = i - 1;
+            goto stage_alloc_failure;
+        }
+        duplicated_stages[i] = duplicated_stage;
+    }
+
+    Filter *filter = new_filter(duplicated_stages, num_stages, memory);
+    if (filter == NULL) {
+        goto filter_alloc_failure;
+    }
+
+    return filter;
+
+    filter_alloc_failure:
+        for (size_t i = 0; i <= last_allocated_stage_index; i++) {
+            free_filter_stage(duplicated_stages[i]);
+        }
+    stage_alloc_failure:
+        memory.deallocate(duplicated_stages);
+    stages_alloc_failure:
+        return NULL;
+}
+
+Filter *duplicate_filter(
+    const Filter *filter,
+    MemoryManager memory
+) {
+    return make_filter(filter->stages, filter->num_stages, memory);
 }
 
 void copy_filter(Filter *source, Filter *destination) {
@@ -73,14 +130,14 @@ void copy_filter(Filter *source, Filter *destination) {
     }
 }
 
-void free_filter(Filter *filter, void deallocate(void *)) {
+void free_filter(Filter *filter) {
     if (filter == NULL) {
         return;
     }
     for (size_t i = 0; i < filter->num_stages; i++) {
-        free_filter_stage(filter->stages[i], deallocate);
+        free_filter_stage(filter->stages[i]);
     }
-    deallocate(filter);
+    filter->deallocate(filter);
 }
 
 void filter_random_update(Filter *filter, MTRand *prng) {
