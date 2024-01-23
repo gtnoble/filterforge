@@ -29,6 +29,7 @@ Component new_component(
     bool is_connected
 );
 
+bool components_equal(Component component1, Component component2);
 double complex component_impedance(double angular_frequency, Component component);
 void copy_component(Component source, Component *destination);
 void component_random_update(Component *component, MTRand *prng);

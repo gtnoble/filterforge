@@ -29,6 +29,15 @@ Component new_component(
     };
 }
 
+bool components_equal(Component component1, Component component2) {
+    return 
+        component1.type == component2.type &&
+        preferred_values_equal(component1.value, component2.value) &&
+        preferred_values_equal(component1.lower_limit, component2.lower_limit) &&
+        preferred_values_equal(component1.upper_limit, component2.upper_limit) &&
+        component1.is_connected == component2.is_connected;
+}
+
 void copy_component(Component source, Component *destination) {
     destination->lower_limit = source.lower_limit;
     destination->upper_limit = source.upper_limit;

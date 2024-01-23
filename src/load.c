@@ -8,8 +8,6 @@
 #include "random.h"
 #include "memory.h"
 
-Load *new_compound_load(Load *loads[], size_t num_loads, LoadType type);
-
 Load *new_component_load(Component component) {
     Load *load = malloc(sizeof(Load));
     if (load == NULL) {
@@ -34,56 +32,47 @@ Load *new_compound_load(Load *loads[], size_t num_loads, LoadType type) {
     return load;
 }
 
-Load *make_compound_load(
-    const Load *loads[], 
-    size_t num_loads,
-    LoadType type
+Load *duplicate_load(
+    Load *load
 ) {
-    Load *duplicated_loads[] = malloc(sizeof(Load *) * num_loads);
-    if (duplicated_loads == NULL) {
-        goto duplicated_loads_alloc_failure;
-    }
 
-    size_t last_successfully_duplicated_load;
-    for (size_t i = 0; i < num_loads; i++) {
-        Load *duplicated_load = duplicate_load(loads[i]);
-        if (duplicate_load == NULL) {
-            last_successfully_duplicated_load = i - 1;
-            goto load_duplication_failure;
+    if (load->type == COMPONENT_LOAD) {
+        return new_component_load(load->element.component);
+    }
+    else if (load->type == SERIES_LOAD || load->type == PARALLEL_LOAD) {
+
+        Load **duplicated_loads = calloc(load->num_elements, sizeof(Load *));
+        if (duplicated_loads == NULL) {
+            goto duplicated_loads_alloc_failure;
         }
-        duplicated_loads[i] = duplicated_load;
-    }
 
-    Load *load = new_compound_load(duplicated_loads, num_loads, type);
-    if (load == NULL) {
-        goto load_alloc_failure;
-    }
-
-    return load;
-        
-    load_alloc_failure:
-        for (size_t i = 0; i <= last_successfully_duplicated_load; i++) {
-            free_load(duplicated_loads[i]);
+        for (size_t i = 0; i < load->num_elements; i++) {
+            Load *duplicated_load = duplicate_load(load->element.loads[i]);
+            if (duplicated_load == NULL) {
+                goto load_duplication_failure;
+            }
+            duplicated_loads[i] = duplicated_load;
         }
-    load_duplication_failure:
-        free(duplicated_loads);
-    duplicated_loads_alloc_failure:
-        return NULL;
-}
 
-Load *new_series_load(Load *loads[], size_t num_loads) {
-    return new_compound_load(loads, num_loads, SERIES_LOAD);
-}
+        Load *duplicated_load = new_compound_load(duplicated_loads, load->num_elements, load->type);
+        if (duplicated_load == NULL) {
+            goto load_alloc_failure;
+        }
 
-Load *make_series_load(const Load *loads[], size_t num_loads) {
-    return make_compound_load(loads, num_loads, SERIES_LOAD);
-}
-
-Load *new_parallel_load(Load *loads[], size_t num_loads) {
-    return new_compound_load(loads, num_loads, PARALLEL_LOAD);
-}
-Load *make_parallel_load(const Load *loads[], size_t num_loads) {
-    return make_compound_load(loads, num_loads, PARALLEL_LOAD);
+        return duplicated_load;
+            
+        load_alloc_failure:
+            for (size_t i = 0; i < load->num_elements; i++) {
+                free_load(duplicated_loads[i]);
+            }
+        load_duplication_failure:
+            free(duplicated_loads);
+        duplicated_loads_alloc_failure:
+            return NULL;
+    }
+    else {
+        assert(false);
+    }
 }
 
 void free_load(Load *load) {
@@ -107,7 +96,7 @@ void free_load(Load *load) {
 
 void load_random_update(Load *load, MTRand *prng) {
 
-    switch (get_load_type(load)) {
+    switch (load->type) {
         case COMPONENT_LOAD:
             component_random_update(&load->element.component, prng);
             break;
@@ -120,27 +109,6 @@ void load_random_update(Load *load, MTRand *prng) {
         default:
             assert(false);
     }
-}
-
-Load *duplicate_load(Load *load) {
-    LoadType type = get_load_type(load);
-
-    Load *duplicated_load;
-    switch (load->type) {
-        case COMPONENT_LOAD:
-            duplicated_load = make_component_load(load->element.component);
-        case PARALLEL_LOAD:
-        case SERIES_LOAD:
-            duplicated_load = make_compound_load(
-                load->element.loads, 
-                load->num_elements, 
-                load->type 
-            );
-        break;
-        default:
-            assert(false);
-    }
-    return duplicated_load;
 }
 
 void copy_load(Load *source, Load *destination) {
@@ -188,10 +156,3 @@ double complex load_impedance(double angular_frequency, Load *load) {
 
     return impedance;
 }
-
-double complex admittance(double angular_frequency, Load *load) {
-    assert(angular_frequency >= 0);
-
-    return 1.0 / load_impedance(angular_frequency, load);
-}
-

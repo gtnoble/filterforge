@@ -29,6 +29,16 @@ START_TEST(test_new_component) {
 }
 END_TEST
 
+START_TEST(test_components_equal) {
+    Component component1 = make_test_component(0);
+    Component component2 = component1;
+
+    ck_assert(components_equal(component1, component2));
+    
+    component2.type = CAPACITOR;
+    ck_assert(! components_equal(component1, component2));
+}
+
 START_TEST(test_copy_component) {
     Component source_component = make_test_component(RESISTOR);
     Component destination_component;
@@ -127,6 +137,7 @@ Suite *component_suite(void) {
     TCase *tests = tcase_create("Core");
 
     tcase_add_test(tests, test_new_component);
+    tcase_add_test(tests, test_components_equal);
     tcase_add_test(tests, test_copy_component);
     tcase_add_test(tests, test_component_impedance);
     tcase_add_test(tests, test_component_random_update);
