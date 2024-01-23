@@ -18,16 +18,7 @@ json_t *load_config_file(const char filename[]) {
     json_t *config_root = json_loadf(config_file, 0, &error);
 
     if (config_root == NULL) {
-        fprintf(
-            stderr, 
-            "error: Failed to parse JSON file - %s: "
-            "Source - %s: "
-            "Line number %d: "
-            "Column %d: "
-            "Position %d",
-            error.text, error.source, error.line, error.column, error.position
-        );
-        exit(1);
+        handle_error(&error);
     }
     
     if(! fclose(config_file)) {
@@ -38,7 +29,7 @@ json_t *load_config_file(const char filename[]) {
     return config_root;
 }
 
-Filter *filter_from_config(json_t *filter_config, MemoryManager memory) {
+Filter *filter_from_config(json_t *filter_config) {
     if (! json_is_array(filter_config)) {
         fprintf(stderr, 
             "error: The root of the configuraion file is not an array."
@@ -48,56 +39,71 @@ Filter *filter_from_config(json_t *filter_config, MemoryManager memory) {
     }
 
     size_t num_stages = json_array_size(filter_config);
-    FilterStage *stages[] = memory.allocate(num_stages * sizeof(FilterStage *));
+    FilterStage *stages[] = malloc(num_stages * sizeof(FilterStage *));
 
     for (size_t i = 0; i < num_stages; i++) {
         json_t *stage_config = json_array_get(filter_config, i);
-        stages[i] = stage_from_config(stage_config, memory);
+        stages[i] = stage_from_config(stage_config);
     }
 
-    return new_filter(stages, num_stages, memory);
+    return new_filter(stages, num_stages);
 }
 
-FilterStage *stage_from_config(json_t *stage_config, MemoryManager memory) {
-    if (! json_is_object(stage_config)) {
-        fprintf(stderr, "error: filter stage configurations must be JSON objects");
-        exit(1);
+FilterStage *stage_from_config(json_t *stage_config) {
+
+    json_t *load_config;
+    char *stage_type_str;
+    json_error_t error;
+    if (
+        json_unpack_ex(
+            stage_config, 
+            &error, 
+            0, 
+            "{s:s, s:o}", "type", stage_type_str, "load", load_config
+        ) == -1
+    ) {
+        handle_error(&error);
     }
-    json_t *load_config = json_object_get(stage_config, "load");
-    Load *load = load_from_config(load_config, memory);
+
+    Load *load = load_from_config(load_config);
     if (load == NULL) {
         return NULL;
     }
 
     FilterStageType stage_type = 
-        filter_stage_type_string_to_code(json_property_string_get(stage_config, "type"));
+        filter_stage_type_string_to_code(stage_type_str);
 
-    return new_filter_stage(load, stage_type, memory);
+    return new_filter_stage(load, stage_type);
 }
 
-Load *load_from_config(json_t *load_config, MemoryManager memory) {
-    if (! json_is_object(load_config)) {
-        fprintf(stderr, "error: load configuration must be a JSON object");
-        exit(1);
+Load *load_from_config(json_t *load_config) {
+
+    json_t *element;
+    char *load_type_str;
+    json_error_t error;
+    if (json_unpack_ex(
+            load_config, 
+            &error, 
+            0, 
+            "{s:s, s:o}", "type", load_type_str, "element", element
+        )  == -1
+    ) {
+        handle_error(&error);
     }
 
-    json_t *element = json_object_get(load_config, "element");
-    if (! (json_is_object(element) || json_is_array(element))) {
-        fprintf(stderr, "error: load element must either be a component or an array of loads");
-        exit(1);
-    }
-
-    char load_type_str[] = json_property_string_get(load_config, "type");
     Load *load;
     if (! strcmp(load_type_str, "parallel"))
-        load = new_parallel_load(loads_from_config_array(element, memory), json_array_size(element), memory);
+        load = new_parallel_load(
+            loads_from_config_array(element), 
+            json_array_size(element)
+        );
     else if (! strcmp(load_type_str, "series"))
-        load = new_series_load(loads_from_config_array(element, memory), json_array_size(element), memory);
+        load = new_series_load(
+            loads_from_config_array(element), 
+            json_array_size(element)
+        );
     else if (! strcmp(load_type_str, "component")) {
-        Component *component = component_from_config(element, memory);
-        if (component == NULL)
-            return NULL;
-        load = new_component_load(component, memory);
+        load = new_component_load(component_from_config(element));
     }
     else {
         fprintf(stderr, "error: %s is not a valid load type.", load_type_str);
@@ -107,7 +113,7 @@ Load *load_from_config(json_t *load_config, MemoryManager memory) {
     return load;
 }
 
-Load **loads_from_config_array(json_t *load_configs_array, MemoryManager memory) {
+Load **loads_from_config_array(json_t *load_configs_array) {
     
     if (! json_is_array(load_configs_array)) {
         fprintf(stderr, "error: compound load elements must be an array");
@@ -115,54 +121,54 @@ Load **loads_from_config_array(json_t *load_configs_array, MemoryManager memory)
     }
 
     size_t num_loads = json_array_size(load_configs_array);
-    Load *loads[] = memory.allocate(sizeof(Load *));
+    Load *loads[] = malloc(sizeof(Load *));
     for (size_t i = 0; i < num_loads; i++) {
-        loads[i] = load_from_config(json_array_get(load_configs_array, i), memory);
+        loads[i] = load_from_config(json_array_get(load_configs_array, i));
     }
 
     return loads;
 }
 
-Component *component_from_config(json_t *component_config, MemoryManager memory) {
-    if (! json_is_object(component_config)) {
-        fprintf(stderr, "error: component must be a json object");
-        exit(1);
-    }
+Component component_from_config(json_t *component_config) {
 
-    PreferredValue component_lower_limit = floor_preferred_value(json_property_number_get(component_config, "lowerLimit"));
-    PreferredValue component_upper_limit = ceiling_preferred_value(json_property_number_get(component_config, "upperLimit"));
-    PreferredValue component_value = nearest_preferred_value(json_property_number_get(component_config, "value"));
-    ComponentType component_type = component_type_string_to_code(json_property_string_get(component_config, "type"));
-
+    double component_lower_limit_num;
+    double component_upper_limit_num;
+    double component_value_num;
+    char *component_type_str;
     bool is_connected = true;
-    json_t *component_connected_config = json_object_get(component_config, "isConnected");
-    if (component_connected_config != NULL && ! json_is_boolean(component_connected_config)) {
-        fprintf(stderr, "If isConnected is specified, it must be a boolean value");
-        exit(1);
+    json_error_t error;
+    if (json_unpack_ex(
+        component_config, 
+        &error, 0, "{s:F, s:F, s:F, s:s, s?b}", 
+        "lowerLimit", &component_lower_limit_num,
+        "upperLimit", &component_upper_limit_num,
+        "value", &component_value_num,
+        "type", component_type_str,
+        "isConnected", &is_connected
+    ) == -1) {
+        handle_error(&error);
     }
 
-    return new_component(component_type, component_value, component_lower_limit, component_upper_limit, is_connected, memory);
+    PreferredValue component_lower_limit = 
+        floor_preferred_value(component_lower_limit_num);
+    PreferredValue component_upper_limit = 
+        ceiling_preferred_value(component_upper_limit_num);
+    PreferredValue component_value = 
+        nearest_preferred_value(component_value_num);
+    ComponentType component_type = 
+        component_type_string_to_code(component_type_str);
+
+    return new_component(
+        component_type, 
+        component_value, 
+        component_lower_limit, 
+        component_upper_limit, 
+        is_connected
+    );
 }
 
-double json_property_number_get(const json_t *config, char key[]) {
-    json_t *number_config = json_object_get(config, key);
-    if (! json_is_number(number_config)) {
-        fprintf(stderr, "error: %s must be a number", key);
-        exit(1);
-    }
-    return json_number_value(number_config);
-}
 
-char *json_property_string_get(const json_t *config, char key[]) {
-    json_t *component_type_config = json_object_get(config, key);
-    if (! json_is_string(component_type_config)) {
-        fprintf(stderr, "error: %s must be a string", key);
-        exit(1);
-    }
-    return json_string_value(component_type_config);
-}
-
-ComponentType component_type_string_to_code(char component_type[]) {
+ComponentType component_type_string_to_code(const char component_type[]) {
     ComponentType component_type_code;
     if (! strcmp(component_type, "resistor")) {
         component_type_code = RESISTOR;
@@ -175,11 +181,12 @@ ComponentType component_type_string_to_code(char component_type[]) {
     }
     else {
         fprintf(stderr, "error: %s is not a valid component type", component_type);
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     return component_type_code;
 
 }
+
 
 FilterStageType filter_stage_type_string_to_code(char stage_type[]) {
     FilterStageType stage_type_code;
@@ -191,6 +198,20 @@ FilterStageType filter_stage_type_string_to_code(char stage_type[]) {
     }
     else {
         fprintf(stderr, "error: %s is not a valid filter stage type", stage_type);
+        extit(EXIT_FAILURE);
     }
     return stage_type_code;
+}
+
+void handle_error(json_error_t *error) {
+    fprintf(
+        stderr, 
+        "error: Failed to parse JSON file - %s: "
+        "Source - %s: "
+        "Line number %d: "
+        "Column %d: "
+        "Position %d",
+        error->text, error->source, error->line, error->column, error->position
+    );
+    exit(1);
 }

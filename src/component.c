@@ -10,68 +10,45 @@
 #include "mtwister.h"
 #include "memory.h"
 
-Component *new_component(
+Component new_component(
     ComponentType type, 
     PreferredValue value, 
     PreferredValue lower_limit, 
     PreferredValue upper_limit, 
-    bool is_connected,
-    MemoryManager memory
+    bool is_connected
 ) {
+    assert(preferred_values_greater_than_or_equal(value, lower_limit));
+    assert(preferred_values_less_than_or_equal(value, upper_limit));
 
-    assert(preferred_values_greater_than_or_equal(&value, &lower_limit));
-    assert(preferred_values_less_than_or_equal(&value, &upper_limit));
-
-    Component *component = memory.allocate(sizeof(Component));
-    if (component == NULL) {
-        return NULL;
-    }
-    component->type = type;
-    component->value = value;
-    component->lower_limit = lower_limit;
-    component->upper_limit = upper_limit;
-    component->is_connected = is_connected;
-    component->deallocate = memory.deallocate;
-    return component;
+    return (Component) {
+        .type = type,
+        .value = value,
+        .lower_limit = lower_limit,
+        .upper_limit = upper_limit,
+        .is_connected = is_connected
+    };
 }
 
-void free_component(Component *component) {
-    if (component == NULL)
-        return;
-    component->deallocate(component);
-}
-
-Component *duplicate_component(const Component *component, MemoryManager memory) {
-    return new_component(
-        component->type, 
-        component->value, 
-        component->lower_limit, 
-        component->upper_limit, 
-        component->is_connected, 
-        memory
-    );
-}
-
-void copy_component(Component *source, Component *destination) {
-    destination->lower_limit = source->lower_limit;
-    destination->upper_limit = source->upper_limit;
-    destination->value = source->value;
-    destination->type = source->type;
-    destination->is_connected = source->is_connected;
+void copy_component(Component source, Component *destination) {
+    destination->lower_limit = source.lower_limit;
+    destination->upper_limit = source.upper_limit;
+    destination->value = source.value;
+    destination->type = source.type;
+    destination->is_connected = source.is_connected;
 }
 
 
-double complex component_impedance(double angular_frequency, Component *component) {
+double complex component_impedance(double angular_frequency, Component component) {
     assert(angular_frequency >= 0);
 
-    if(! component->is_connected) {
+    if(! component.is_connected) {
         return INFINITY;
     }
 
-    double value = evaluate_preferred_value(&component->value);
+    double value = evaluate_preferred_value(component.value);
 
     double complex impedance;
-    switch (component->type) {
+    switch (component.type) {
         case RESISTOR:
             impedance = value;
             break;
@@ -91,10 +68,10 @@ void component_random_update(Component *component, MTRand *prng) {
 
     component->is_connected = gen_random_bool(prng);
 
-    if (preferred_values_equal(&component->value, &component->lower_limit)) {
+    if (preferred_values_equal(component->value, component->lower_limit)) {
         increment_preferred_value(&component->value);
     }
-    else if (preferred_values_equal(&component->value, &component->upper_limit)) {
+    else if (preferred_values_equal(component->value, component->upper_limit)) {
         decrement_preferred_value(&component->value);
     }
     else {

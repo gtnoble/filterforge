@@ -1,6 +1,5 @@
 #include <complex.h>
 #include <assert.h>
-#include <libguile.h>
 
 #include "two_port_network.h"
 
@@ -10,65 +9,54 @@ double complex *matrix_element(int row, int column, TwoPortNetwork *network) {
     assert(row <= 2);
     assert(column <= 2);
 
-    if (row == 1) {
-        if (column == 1) {
-            return &network->element11;
-        }
-        else {
-            return &network->element12;
-        }
-    }
-    else {
-        if (column == 1) {
-            return &network->element21;
-        }
-        else {
-            return &network->element22;
-        }
-    }
+    return &network->abcd_elements[row - 1][column - 1];
 }
 
-void cascade_network(TwoPortNetwork *result, TwoPortNetwork *matrix1, TwoPortNetwork *matrix2) {
+TwoPortNetwork cascade_network(TwoPortNetwork matrix1, TwoPortNetwork matrix2) {
+    TwoPortNetwork result;
     for (int i = 1; i <= 2; i++) {
         for (int j = 1; j <= 2; j++) {
             for (int k = 1; k <= 2; k++) {
-                *matrix_element(i, j, result) += 
-                    *matrix_element(i, k, matrix1) * 
-                    *matrix_element(k, j, matrix2);
+                *matrix_element(i, j, &result) += 
+                    *matrix_element(i, k, &matrix1) * 
+                    *matrix_element(k, j, &matrix2);
             }
         }
     }
+    return result;
 }
 
-double complex network_voltage_gain(TwoPortNetwork *network) {
-    return *matrix_element(1, 1, network);
+double complex network_voltage_gain(TwoPortNetwork network) {
+    return network.abcd_elements[0][0];
 }
 
-TwoPortNetwork *make_two_port_network(void) {
-    return scm_gc_malloc(sizeof(TwoPortNetwork), "matrix");
+TwoPortNetwork series_connected_network(double complex impedance) {
+    TwoPortNetwork result;
+    result.abcd_elements[0][0] = 1;
+    result.abcd_elements[0][1] = impedance;
+    result.abcd_elements[1][0] = 0;
+    result.abcd_elements[1][1] = 1;
+    return result;
 }
 
-void series_connected_network(TwoPortNetwork *network, complex impedance) {
-    *matrix_element(1, 1, network) = 1;
-    *matrix_element(1, 2, network) = impedance;
-    *matrix_element(2, 1, network) = 0;
-    *matrix_element(2, 2, network) = 1;
+TwoPortNetwork shunt_connected_network(double complex impedance) {
+    TwoPortNetwork result;
+    result.abcd_elements[0][0] = 1;
+    result.abcd_elements[0][1] = 0;
+    result.abcd_elements[1][0] = 1.0 / impedance;
+    result.abcd_elements[1][1] = 1;
+    return result;
 }
 
-void shunt_connected_network(TwoPortNetwork *network, complex impedance) {
-    *matrix_element(1, 1, network) = 1;
-    *matrix_element(1, 2, network) = 0;
-    *matrix_element(2, 1, network) = 1.0 / impedance;
-    *matrix_element(2, 2, network) = 1;
+TwoPortNetwork transformer_network(double turns_ratio) {
+    TwoPortNetwork result;
+    result.abcd_elements[0][0] = turns_ratio;
+    result.abcd_elements[0][1] = 0;
+    result.abcd_elements[1][0] = 0;
+    result.abcd_elements[1][1] = 1.0 / turns_ratio;
+    return result;
 }
 
-void transformer_network(TwoPortNetwork *network, double turns_ratio) {
-    *matrix_element(1, 1, network) = turns_ratio;
-    *matrix_element(1, 2, network) = 0;
-    *matrix_element(2, 1, network) = 0;
-    *matrix_element(2, 2, network) = 1.0 / turns_ratio;
-}
-
-void identity_network(TwoPortNetwork *network) {
-    transformer_network(network, 1.0);
+TwoPortNetwork identity_network() {
+    transformer_network(1.0);
 }
