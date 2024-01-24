@@ -75,16 +75,34 @@ START_TEST(test_loads_equal) {
 }
 END_TEST
 
-START_TEST(test_duplicate_load) {
+START_TEST(test_duplicated_load) {
     Component component = make_test_component();
+    MTRand prng = seedRand(1);
 
+    // Duplicate a component load
     Load *component_load = new_component_load(component);
     Load *duplicated_component_load = duplicate_load(component_load);
+    // Duplicated loads should be the same
+    ck_assert(loads_equal(component_load, duplicated_component_load));
+    load_random_update(duplicated_component_load, &prng);
+    // Randomly updated load should be different than before
+    ck_assert(! loads_equal(duplicated_component_load, component_load));
+    copy_load(component_load, duplicated_component_load);
+    // Copying the original data to the modified load should make it equal to the original load
     ck_assert(loads_equal(component_load, duplicated_component_load));
 
+
+    // Duplicate a compound load
     Load *loads[] = {component_load, component_load};
     Load *compound_load = new_compound_load(loads, 2, SERIES_LOAD);
     Load *duplicated_compound_load = duplicate_load(compound_load);
+    // Duplicated loads should be the same
+    ck_assert(loads_equal(compound_load, duplicated_compound_load));
+    load_random_update(duplicated_compound_load, &prng);
+    // Randomly updated load should be different than before
+    ck_assert(! loads_equal(compound_load, duplicated_compound_load));
+    copy_load(compound_load, duplicated_compound_load);
+    // Copying the original data to the modified load should make it equal to the original load
     ck_assert(loads_equal(compound_load, duplicated_compound_load));
 
     free_load(component_load);
@@ -100,7 +118,7 @@ Suite *load_suite(void) {
     tcase_add_test(tests, test_new_component_load);
     tcase_add_test(tests, test_new_compound_load);
     tcase_add_test(tests, test_loads_equal);
-    tcase_add_test(tests, test_duplicate_load);
+    tcase_add_test(tests, test_duplicated_load);
 
     suite_add_tcase(s, tests);
 
