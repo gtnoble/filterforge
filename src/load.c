@@ -19,17 +19,46 @@ Load *new_component_load(Component component) {
     return load;
 }
 
-Load *new_compound_load(Load *loads[], size_t num_loads, LoadType type) {
+Load *new_compound_load(Load **loads, size_t num_loads, LoadType type) {
     Load *load = malloc(sizeof(Load));
     if (load == NULL) {
         return NULL;
     }
+    Load **element_loads = malloc(sizeof(Load *) * num_loads);
+    if (element_loads == NULL) {
+        free(load);
+        return NULL;
+    }
+    memcpy(element_loads, loads, sizeof(Load *) * num_loads);
 
-    load->element.loads = loads;
+    load->element.loads = element_loads;
     load->num_elements = num_loads;
     load->type = type;
 
     return load;
+}
+
+bool loads_equal(Load *load1, Load *load2) {
+    if (! (
+        load1->type == load2->type &&
+        load1->num_elements == load2->num_elements
+    )) {
+        return false;
+    }
+
+    if (load1->type == COMPONENT_LOAD) {
+        return components_equal(load1->element.component, load2->element.component);
+    }
+    else if (load1->type == PARALLEL_LOAD || load1->type == SERIES_LOAD) {
+        for (size_t i = 0; i < load1->num_elements; i++) {
+            if (! loads_equal(load1->element.loads[i], load2->element.loads[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+    assert(false);
+    return false;
 }
 
 Load *duplicate_load(
@@ -63,7 +92,7 @@ Load *duplicate_load(
             
         load_alloc_failure:
             for (size_t i = 0; i < load->num_elements; i++) {
-                free_load(duplicated_loads[i]);
+                free_load_node(duplicated_loads[i]);
             }
         load_duplication_failure:
             free(duplicated_loads);
@@ -84,10 +113,28 @@ void free_load(Load *load) {
             break;
         case SERIES_LOAD:
         case PARALLEL_LOAD:
+            free(load->element.loads);
+            free(load);
+            break;
+        default:
+            assert(false);
+    }
+
+}
+
+void free_load_node(Load *load) {
+    if (load != NULL)
+        return; 
+    switch (load->type) {
+        case COMPONENT_LOAD:
+            free_load(load);
+            break;
+        case SERIES_LOAD:
+        case PARALLEL_LOAD:
             for (size_t i = 0; i < load->num_elements; i++) {
                 free_load(load->element.loads[i]);
             }
-            free(load);
+            free_load(load);
             break;
         default:
             assert(false);

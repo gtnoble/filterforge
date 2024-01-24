@@ -35,7 +35,7 @@ FilterStage *make_filter_stage(
     return stage;
 
     stage_alloc_failure:
-        free_load(duplicated_load);
+        deep_free_load(duplicated_load);
     load_duplication_failure:
         return NULL;
 }
@@ -53,7 +53,7 @@ void copy_filter_stage(FilterStage source, FilterStage *destination) {
 void free_filter_stage(FilterStage *stage) {
     if (stage == NULL)
         return;
-    free_load(stage->load);
+    deep_free_load(stage->load);
     free(stage);
 }
 
