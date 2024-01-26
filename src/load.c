@@ -20,6 +20,8 @@ Load *new_component_load(Component component) {
 }
 
 Load *new_compound_load(Load **loads, size_t num_loads, LoadType type) {
+    assert(loads != NULL);
+
     Load *load = malloc(sizeof(Load));
     if (load == NULL) {
         return NULL;
@@ -39,6 +41,9 @@ Load *new_compound_load(Load **loads, size_t num_loads, LoadType type) {
 }
 
 bool loads_equal(Load *load1, Load *load2) {
+    assert(load1 != NULL);
+    assert(load2 != NULL);
+
     if (! (
         load1->type == load2->type &&
         load1->num_elements == load2->num_elements
@@ -64,6 +69,7 @@ bool loads_equal(Load *load1, Load *load2) {
 Load *duplicate_load(
     Load *load
 ) {
+    assert(load != NULL);
 
     if (load->type == COMPONENT_LOAD) {
         return new_component_load(load->element.component);
@@ -142,6 +148,8 @@ void free_load_node(Load *load) {
 }
 
 void load_random_update(Load *load, MTRand *prng) {
+    assert(load != NULL);
+    assert(prng != NULL);
 
     switch (load->type) {
         case COMPONENT_LOAD:
@@ -159,6 +167,9 @@ void load_random_update(Load *load, MTRand *prng) {
 }
 
 void copy_load(Load *source, Load *destination) {
+    assert(source != NULL);
+    assert(destination != NULL);
+
     destination->type = source->type;
     switch (source->type) {
         case COMPONENT_LOAD:
@@ -177,6 +188,7 @@ void copy_load(Load *source, Load *destination) {
 
 double complex load_impedance(double angular_frequency, Load *load) {
     assert(angular_frequency >= 0);
+    assert(load != NULL);
 
     double complex impedance;
     switch(load->type) {

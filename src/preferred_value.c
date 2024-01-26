@@ -101,6 +101,8 @@ PreferredValue nearest_preferred_value(double numeric_value) {
 }
 
 void increment_preferred_value(PreferredValue *value) {
+    assert(value != NULL);
+
     PreferredValue current_value = *value;
     PreferredValue next_value;
 
@@ -119,6 +121,8 @@ void increment_preferred_value(PreferredValue *value) {
 }
 
 void decrement_preferred_value(PreferredValue *value) {
+    assert(value != NULL);
+
     PreferredValue current_value = *value;
     PreferredValue next_value;
 

@@ -1,9 +1,11 @@
 #include <complex.h>
 #include <assert.h>
+#include <stdlib.h>
 
 #include "two_port_network.h"
 
 double complex *matrix_element(int row, int column, TwoPortNetwork *network) {
+    assert(network != NULL);
     assert(row > 0);
     assert(column > 0);
     assert(row <= 2);
@@ -58,5 +60,5 @@ TwoPortNetwork transformer_network(double turns_ratio) {
 }
 
 TwoPortNetwork identity_network() {
-    transformer_network(1.0);
+    return transformer_network(1.0);
 }

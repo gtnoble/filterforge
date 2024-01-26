@@ -2,14 +2,14 @@
 #include <stdlib.h>
 #include "mtwister.h"
 
-MTRand *make_prng(unsigned long seed, void *allocate(size_t)) {
-    MTRand *prng = allocate(sizeof(MTRand));
+MTRand *make_prng(unsigned long seed) {
+    MTRand *prng = malloc(sizeof(MTRand));
     *prng = seedRand(seed);
     return prng;
 }
 
-void free_prng(MTRand *prng, void deallocate(void *)) {
-    deallocate(prng);
+void free_prng(MTRand *prng) {
+    free(prng);
 }
 
 unsigned long gen_random(MTRand *prng) {

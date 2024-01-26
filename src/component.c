@@ -74,6 +74,8 @@ double complex component_impedance(double angular_frequency, Component component
 }
 
 void component_random_update(Component *component, MTRand *prng) {
+    assert(component != NULL);
+    assert(prng != NULL);
 
     component->is_connected = gen_random_bool(prng);
 
