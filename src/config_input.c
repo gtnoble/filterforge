@@ -2,31 +2,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <assert.h>
 
 #include "filter.h"
 #include "component.h"
 #include "load.h"
+#include "config.h"
+#include "config_input.h"
 
-json_t *load_config_file(const char filename[]) {
-    FILE *config_file = fopen(filename, "r");
-    if (config_file == NULL) {
-        fprintf(stderr, "error: Failed to open file: %s", filename);
-        exit(1);
-    }
+LoadType load_type_string_to_code(const char load_type[]);
+ComponentType component_type_string_to_code(const char component_type[]);
+FilterStageType filter_stage_type_string_to_code(char stage_type[]);
+static void handle_error(json_error_t *error);
+
+Filter *load_filter(const char filename[]) {
 
     json_error_t error;
-    json_t *config_root = json_loadf(config_file, 0, &error);
+    json_t *filter_config = json_load_file(filename, 0, &error);
 
-    if (config_root == NULL) {
-        handle_error(&error);
-    }
-    
-    if(! fclose(config_file)) {
-        fprintf(stderr, "Failed to close file: %s", filename);
-        exit(1);
-    }
+    Filter *filter = filter_from_config(filter_config);
 
-    return config_root;
+    json_decref(filter_config);
+
+    return filter;
 }
 
 Filter *filter_from_config(json_t *filter_config) {
@@ -35,31 +34,44 @@ Filter *filter_from_config(json_t *filter_config) {
             "error: The root of the configuraion file is not an array."
             "The root should be an array of filter stages."
         );
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     size_t num_stages = json_array_size(filter_config);
-    FilterStage *stages[] = malloc(num_stages * sizeof(FilterStage *));
+    FilterStage **stages = malloc(num_stages * sizeof(FilterStage *));
 
     for (size_t i = 0; i < num_stages; i++) {
         json_t *stage_config = json_array_get(filter_config, i);
+        if (! json_is_object(stage_config)) {
+            fprintf(stderr,
+                "error: Filter stage %lu is not an object.",
+                i + 1
+            );
+            exit(EXIT_FAILURE);
+        }
         stages[i] = stage_from_config(stage_config);
     }
 
-    return new_filter(stages, num_stages);
+    Filter *filter = new_filter(stages, num_stages);
+    free(stages);
+
+    return filter;
 }
 
 FilterStage *stage_from_config(json_t *stage_config) {
 
-    json_t *load_config;
-    char *stage_type_str;
+    json_t *load_config = NULL;
+    char *stage_type_str = NULL;
+    static const char *k_filter_stage_schema = "{s:s, s:o}";
     json_error_t error;
     if (
         json_unpack_ex(
             stage_config, 
             &error, 
             0, 
-            "{s:s, s:o}", "type", stage_type_str, "load", load_config
+            k_filter_stage_schema, 
+            k_filter_stage_type_key, &stage_type_str, 
+            k_filter_stage_load_key, &load_config
         ) == -1
     ) {
         handle_error(&error);
@@ -78,55 +90,54 @@ FilterStage *stage_from_config(json_t *stage_config) {
 
 Load *load_from_config(json_t *load_config) {
 
-    json_t *element;
-    char *load_type_str;
+    json_t *element = NULL;
+    char *load_type_str = NULL;
+
+    static const char *k_load_config_schema = "{s:s, s:o}";
     json_error_t error;
     if (json_unpack_ex(
             load_config, 
             &error, 
             0, 
-            "{s:s, s:o}", "type", load_type_str, "element", element
+            k_load_config_schema, 
+            k_load_type_key, &load_type_str, 
+            k_load_element_key, &element
         )  == -1
     ) {
         handle_error(&error);
     }
 
     Load *load;
-    if (! strcmp(load_type_str, "parallel"))
-        load = new_parallel_load(
-            loads_from_config_array(element), 
-            json_array_size(element)
+    LoadType load_type = load_type_string_to_code(load_type_str);
+
+    if (load_type == PARALLEL_LOAD || load_type == SERIES_LOAD) {
+        if (! json_is_array(element)) {
+            fprintf(stderr, "error: compound load elements must be an array");
+            exit(EXIT_FAILURE);
+        }
+
+        size_t num_loads = json_array_size(element);
+        Load **loads = malloc(sizeof(Load *));
+        for (size_t i = 0; i < num_loads; i++) {
+            loads[i] = load_from_config(json_array_get(element, i));
+        }
+
+        load = new_compound_load(
+            loads,
+            num_loads,
+            load_type
         );
-    else if (! strcmp(load_type_str, "series"))
-        load = new_series_load(
-            loads_from_config_array(element), 
-            json_array_size(element)
-        );
-    else if (! strcmp(load_type_str, "component")) {
+
+        free(loads);
+    }
+    else if (load_type == COMPONENT_LOAD) {
         load = new_component_load(component_from_config(element));
     }
     else {
-        fprintf(stderr, "error: %s is not a valid load type.", load_type_str);
-        exit(1);
+        assert(false);
     }
 
     return load;
-}
-
-Load **loads_from_config_array(json_t *load_configs_array) {
-    
-    if (! json_is_array(load_configs_array)) {
-        fprintf(stderr, "error: compound load elements must be an array");
-        exit(1);
-    }
-
-    size_t num_loads = json_array_size(load_configs_array);
-    Load *loads[] = malloc(sizeof(Load *));
-    for (size_t i = 0; i < num_loads; i++) {
-        loads[i] = load_from_config(json_array_get(load_configs_array, i));
-    }
-
-    return loads;
 }
 
 Component component_from_config(json_t *component_config) {
@@ -134,17 +145,19 @@ Component component_from_config(json_t *component_config) {
     double component_lower_limit_num;
     double component_upper_limit_num;
     double component_value_num;
-    char *component_type_str;
+    char *component_type_str = NULL;
     bool is_connected = true;
+
+    static const char *k_component_config_schema = "{s:F, s:F, s:F, s:s, s?b}";
     json_error_t error;
     if (json_unpack_ex(
         component_config, 
-        &error, 0, "{s:F, s:F, s:F, s:s, s?b}", 
-        "lowerLimit", &component_lower_limit_num,
-        "upperLimit", &component_upper_limit_num,
-        "value", &component_value_num,
-        "type", component_type_str,
-        "isConnected", &is_connected
+        &error, 0, k_component_config_schema, 
+        k_component_lower_limit_key, &component_lower_limit_num,
+        k_component_upper_limit_key, &component_upper_limit_num,
+        k_component_value_key, &component_value_num,
+        k_component_type_key, &component_type_str,
+        k_component_is_connected_key, &is_connected
     ) == -1) {
         handle_error(&error);
     }
@@ -170,13 +183,13 @@ Component component_from_config(json_t *component_config) {
 
 ComponentType component_type_string_to_code(const char component_type[]) {
     ComponentType component_type_code;
-    if (! strcmp(component_type, "resistor")) {
+    if (! strcmp(component_type, k_component_type_resistor_value)) {
         component_type_code = RESISTOR;
     }
-    else if (! strcmp(component_type, "capacitor")) {
+    else if (! strcmp(component_type, k_component_type_capacitor_value)) {
         component_type_code = CAPACITOR;
     }
-    else if (! strcmp(component_type, "inductor")) {
+    else if (! strcmp(component_type, k_component_type_inductor_value)) {
         component_type_code = INDUCTOR;
     }
     else {
@@ -187,23 +200,41 @@ ComponentType component_type_string_to_code(const char component_type[]) {
 
 }
 
+LoadType load_type_string_to_code(const char load_type[]) {
+    LoadType load_type_code;
+    if (! strcmp(load_type, k_load_type_component_value)) {
+        load_type_code = COMPONENT_LOAD;
+    }
+    else if (! strcmp(load_type, k_load_type_parallel_value)) {
+        load_type_code = PARALLEL_LOAD;
+    }
+    else if (! strcmp(load_type, k_load_type_series_value)) {
+        load_type_code = SERIES_LOAD;
+    }
+    else {
+        fprintf(stderr, "error: %s is not a valid load type", load_type);
+        exit(EXIT_FAILURE);
+    }
+    return load_type_code;
+}
+
 
 FilterStageType filter_stage_type_string_to_code(char stage_type[]) {
     FilterStageType stage_type_code;
-    if (! strcmp(stage_type, "series")) {
+    if (! strcmp(stage_type, k_filter_stage_type_series_value)) {
         stage_type_code = SERIES_FILTER;
     }
-    else if (! strcmp(stage_type, "shunt")) {
+    else if (! strcmp(stage_type, k_filter_stage_type_shunt_value)) {
         stage_type_code = SHUNT_FILTER;
     }
     else {
         fprintf(stderr, "error: %s is not a valid filter stage type", stage_type);
-        extit(EXIT_FAILURE);
+        exit(EXIT_FAILURE);
     }
     return stage_type_code;
 }
 
-void handle_error(json_error_t *error) {
+static void handle_error(json_error_t *error) {
     fprintf(
         stderr, 
         "error: Failed to parse JSON file - %s: "
@@ -213,5 +244,5 @@ void handle_error(json_error_t *error) {
         "Position %d",
         error->text, error->source, error->line, error->column, error->position
     );
-    exit(1);
+    exit(EXIT_FAILURE);
 }

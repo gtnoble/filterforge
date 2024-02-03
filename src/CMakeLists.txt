@@ -1,7 +1,13 @@
-add_library(preferred_value STATIC preferred_value.c)
-add_library(component STATIC component.c)
-add_library(random STATIC random.c)
-add_library(mtwister STATIC mtwister.c)
-add_library(load STATIC load.c)
-add_library(filter STATIC filter.c)
-add_library(two_port_network STATIC two_port_network.c)
+add_library(
+    filterforge STATIC 
+    preferred_value.c
+    component.c
+    random.c
+    mtwister.c
+    load.c
+    filter.c
+    two_port_network.c
+    config_input.c
+    config_output.c
+)
+target_link_libraries(filterforge -lm -ljansson)

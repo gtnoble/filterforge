@@ -1,0 +1,15 @@
+[
+  {
+    "type": "series",
+    "load": {
+      "type": "component",
+      "element": {
+        "lowerLimit": 1,
+        "upperLimit": 100,
+        "value": 10,
+        "type": "resistor",
+        "isConnected": true
+      }
+    }
+  }
+]
