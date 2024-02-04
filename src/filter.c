@@ -209,3 +209,21 @@ double complex filter_voltage_gain(double angular_frequency, const Filter *filte
         get_filter_network(angular_frequency, filter)
     );
 }
+
+double complex filter_output_impedance(
+    double angular_frequency, const Filter *filter, double complex source_impedance
+) {
+    return network_output_impedance(
+        get_filter_network(angular_frequency, filter),
+        source_impedance
+    );
+}
+
+double complex filter_input_impedance(
+    double angular_frequency, const Filter *filter, double complex load_impedance
+) {
+    return network_input_impedance(
+        get_filter_network(angular_frequency, filter),
+        load_impedance
+    );
+}

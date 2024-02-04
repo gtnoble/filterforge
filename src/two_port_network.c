@@ -4,27 +4,78 @@
 
 #include "two_port_network.h"
 
-double complex *matrix_element(int row, int column, TwoPortNetwork *network) {
-    assert(network != NULL);
-    assert(row > 0);
-    assert(column > 0);
-    assert(row <= 2);
-    assert(column <= 2);
+void matrix_matrix_multiply(
+    const double complex (*matrix1)[2][2], 
+    const double complex (*matrix2)[2][2],
+    double complex (*result_matrix)[2][2]
+) {
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            for (int k = 0; k < 2; k++) {
+                (*result_matrix)[i][j] += 
+                    (*matrix1)[i][k] * 
+                    (*matrix2)[k][j];
+            }
+        }
+    }
+}
 
-    return &network->abcd_elements[row - 1][column - 1];
+void scalar_matrix_multiply(
+    double complex scalar,
+    const double complex (*matrix)[2][2],
+    double complex (*result)[2][2]
+) {
+    for (size_t i = 0; i < 2; i++) {
+        for (size_t j = 0; j < 2; j++) {
+            (*result)[i][j] = scalar * (*matrix)[i][j];
+        }
+    }
+}
+
+double complex determinant(const double complex (*matrix)[2][2]) {
+    return (*matrix)[0][0] * (*matrix)[1][1] - (*matrix)[0][1] * (*matrix)[1][0];
+}
+
+void network_impedance_parameters(TwoPortNetwork network, double complex (*result)[2][2]) {
+    (*result)[0][0] = network.abcd_elements[0][0];
+    (*result)[1][1] = network.abcd_elements[1][1];
+    (*result)[0][1] = determinant(&network.abcd_elements);
+    (*result)[1][0] = 1;
+    scalar_matrix_multiply(1.0 / network.abcd_elements[1][0], result, result);
+}
+
+double complex network_output_impedance(
+    TwoPortNetwork network, 
+    double complex source_impedance
+) {
+    double complex impedance_parameters[2][2];
+    network_impedance_parameters(network, &impedance_parameters);
+
+    return 
+        impedance_parameters[1][1] - 
+        (impedance_parameters[0][1] * impedance_parameters[1][0]) /
+        (impedance_parameters[0][0] + source_impedance);
+}
+
+double complex network_input_impedance(
+    TwoPortNetwork network,
+    double complex load_impedance
+) {
+
+    double complex impedance_parameters[2][2];
+    network_impedance_parameters(network, &impedance_parameters);
+
+    return 
+        impedance_parameters[0][0] -
+        (impedance_parameters[0][1] * impedance_parameters[1][0]) /
+        (impedance_parameters[1][1] + load_impedance);
 }
 
 TwoPortNetwork cascade_network(TwoPortNetwork matrix1, TwoPortNetwork matrix2) {
     TwoPortNetwork result;
-    for (int i = 1; i <= 2; i++) {
-        for (int j = 1; j <= 2; j++) {
-            for (int k = 1; k <= 2; k++) {
-                *matrix_element(i, j, &result) += 
-                    *matrix_element(i, k, &matrix1) * 
-                    *matrix_element(k, j, &matrix2);
-            }
-        }
-    }
+    matrix_matrix_multiply(
+        &matrix1.abcd_elements, &matrix2.abcd_elements, &result.abcd_elements
+    );
     return result;
 }
 

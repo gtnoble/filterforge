@@ -8,6 +8,15 @@ typedef struct {
 } TwoPortNetwork;
 
 double complex network_voltage_gain(TwoPortNetwork matrix);
+double complex network_output_impedance(
+    TwoPortNetwork network, 
+    double complex source_impedance
+);
+
+double complex network_input_impedance(
+    TwoPortNetwork network,
+    double complex load_impedance
+);
 
 TwoPortNetwork cascade_network(TwoPortNetwork matrix1, TwoPortNetwork matrix2);
 TwoPortNetwork series_connected_network(double complex impedance);

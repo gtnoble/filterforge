@@ -9,5 +9,6 @@ add_library(
     two_port_network.c
     config_input.c
     config_output.c
+    optimize.c
 )
 target_link_libraries(filterforge -lm -ljansson)

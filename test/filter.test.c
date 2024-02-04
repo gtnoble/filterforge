@@ -36,17 +36,17 @@ FilterStage *make_test_stage2(void) {
     return new_filter_stage(make_test_load2(), SERIES_FILTER);
 }
 
-Filter *make_test_filter1(void) {
+Filter *make_test_shunt_filter(void) {
     FilterStage *stages[] = {make_test_stage1()};
     return new_filter(stages, 1);
 }
 
-Filter *make_test_filter2(void) {
+Filter *make_test_cascade_filter(void) {
     FilterStage *stages[] = {make_test_stage1(), make_test_stage2()};
     return new_filter(stages, 2);
 }
 
-Filter *make_test_filter3(void) {
+Filter *make_test_series_filter(void) {
     FilterStage *stages[] = {make_test_stage2()};
     return new_filter(stages, 1);
 }
@@ -118,7 +118,7 @@ START_TEST(test_filter_stage_random_update) {
 }
 
 START_TEST(test_new_filter) {
-    Filter *filter = make_test_filter1();
+    Filter *filter = make_test_shunt_filter();
     FilterStage *stage = make_test_stage1();
     ck_assert_int_eq(filter->num_stages, 1);
 
@@ -130,8 +130,8 @@ START_TEST(test_new_filter) {
 END_TEST
 
 START_TEST(test_filters_equal) {
-    Filter *filter1 = make_test_filter1();
-    Filter *filter2 = make_test_filter1();
+    Filter *filter1 = make_test_shunt_filter();
+    Filter *filter2 = make_test_shunt_filter();
 
     ck_assert(filters_equal(filter1, filter2));
 
@@ -140,7 +140,7 @@ START_TEST(test_filters_equal) {
 }
 
 START_TEST(test_duplicate_filter) {
-    Filter *filter = make_test_filter1();
+    Filter *filter = make_test_shunt_filter();
     Filter *duplicated_filter = duplicate_filter(filter);
 
     ck_assert(filters_equal(filter, duplicated_filter));
@@ -151,8 +151,8 @@ START_TEST(test_duplicate_filter) {
 END_TEST
 
 START_TEST(test_copy_filter) {
-    Filter *filter = make_test_filter1();
-    Filter *filter_copy = make_test_filter3();
+    Filter *filter = make_test_shunt_filter();
+    Filter *filter_copy = make_test_series_filter();
     ck_assert(! filters_equal(filter, filter_copy));
 
     copy_filter(filter, filter_copy);
@@ -164,8 +164,8 @@ START_TEST(test_copy_filter) {
 END_TEST
 
 START_TEST(test_filter_random_update) {
-    Filter *filter = make_test_filter1();
-    Filter *filter_copy = make_test_filter1();
+    Filter *filter = make_test_shunt_filter();
+    Filter *filter_copy = make_test_shunt_filter();
     ck_assert(filters_equal(filter, filter_copy));
 
     MTRand prng = seedRand(1);
@@ -179,11 +179,36 @@ START_TEST(test_filter_random_update) {
 END_TEST
 
 START_TEST(test_filter_voltage_gain) {
-    Filter *filter = make_test_filter1();
+    Filter *filter = make_test_shunt_filter();
 
     ck_assert_double_eq_tol(filter_voltage_gain(0, filter), 1, 0.0001);
 
     free_filter_node(filter);
+}
+END_TEST
+
+START_TEST(test_filter_impedance) {
+    Filter *filter = make_test_shunt_filter();
+
+    ck_assert_double_eq_tol(creal(filter_output_impedance(0, filter, 0)), 0, 0.0001);
+    ck_assert_double_eq_tol(cimag(filter_output_impedance(0, filter, 0)), 0, 0.0001);
+    free_filter_node(filter);
+
+    Filter *cascade_filter = make_test_cascade_filter();
+    ck_assert_double_eq_tol(
+        creal(filter_output_impedance(0, cascade_filter, 0)), 10, 0.00001
+    );
+    ck_assert_double_eq_tol(
+        cimag(filter_output_impedance(0, cascade_filter, 0)), 0, 0.00001
+    );
+
+    ck_assert_double_eq_tol(
+        creal(filter_input_impedance(0, cascade_filter, INFINITY)), 1, 0.00001
+    );
+    ck_assert_double_eq_tol(
+        cimag(filter_input_impedance(0, cascade_filter, INFINITY)), 0, 0.00001
+    );
+
 }
 END_TEST
 
@@ -212,6 +237,7 @@ Suite *filter_suite() {
     tcase_add_test(tests, test_copy_filter);
     tcase_add_test(tests, test_filter_random_update);
     tcase_add_test(tests, test_filter_voltage_gain);
+    tcase_add_test(tests, test_filter_impedance);
 
     suite_add_tcase(s, tests);
 

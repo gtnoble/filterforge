@@ -37,5 +37,11 @@ void filter_random_update(Filter *filter, MTRand *prng);
 TwoPortNetwork filter_stage_network(double angular_frequency, const FilterStage *stage);
 TwoPortNetwork get_filter_network(double angular_frequency, const Filter *filter);
 double complex filter_voltage_gain(double angular_frequency, const Filter *filter);
+double complex filter_output_impedance(
+    double angular_frequency, const Filter *filter, double complex source_impedance
+);
+double complex filter_input_impedance(
+    double angular_frequency, const Filter *filter, double complex load_impedance
+);
 
 #endif
