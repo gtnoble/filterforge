@@ -20,6 +20,13 @@ Filter *load_filter(const char filename[]) {
 
     json_error_t error;
     json_t *filter_config = json_load_file(filename, 0, &error);
+    if (filter_config == NULL) {
+        fprintf(
+            stderr,
+            "Failed to read filter configuration file. details: "
+        );
+        handle_error(&error);
+    }
 
     Filter *filter = filter_from_config(filter_config);
 
