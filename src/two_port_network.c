@@ -1,14 +1,19 @@
 #include <complex.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
 
 #include "two_port_network.h"
+
+const double complex zeros_matrix[2][2] = {{0, 0}, {0, 0}};
 
 void matrix_matrix_multiply(
     const double complex (*matrix1)[2][2], 
     const double complex (*matrix2)[2][2],
     double complex (*result_matrix)[2][2]
 ) {
+    memcpy(result_matrix, zeros_matrix, sizeof(*result_matrix));
     for (int i = 0; i < 2; i++) {
         for (int j = 0; j < 2; j++) {
             for (int k = 0; k < 2; k++) {
@@ -30,6 +35,21 @@ void scalar_matrix_multiply(
             (*result)[i][j] = scalar * (*matrix)[i][j];
         }
     }
+}
+
+bool matrices_equal(
+    const double complex (*matrix1)[2][2], 
+    const double complex (*matrix2)[2][2], 
+    double tolerance
+) {
+    bool is_equal = true;
+    for (size_t i = 0; i < 2; i++) {
+        for (size_t j = 0; j < 2; j++) {
+            is_equal = 
+                is_equal && cabs((*matrix1)[i][j] - (*matrix2)[i][j]) <= tolerance;
+        }
+    }
+    return is_equal;
 }
 
 double complex determinant(const double complex (*matrix)[2][2]) {

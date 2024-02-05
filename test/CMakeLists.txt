@@ -21,4 +21,8 @@ add_executable(test_input config_input.test.c)
 target_link_libraries(test_input filterforge)
 add_test(NAME TestInput COMMAND test_input ./test_filter.json)
 
+add_executable(test_two_port_network two_port_network.test.c)
+target_link_libraries(test_two_port_network filterforge)
+add_test(NAME TestTwoPortNetwork COMMAND test_two_port_network)
+
 configure_file(test_filter.json test_filter.json COPYONLY)
