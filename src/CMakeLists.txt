@@ -10,5 +10,6 @@ add_library(
     config_input.c
     config_output.c
     optimize.c
+    measurement.c
 )
 target_link_libraries(filterforge -lm -ljansson)

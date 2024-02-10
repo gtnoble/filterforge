@@ -21,6 +21,7 @@ static const char *k_load_element_key = "element";
 static const char *k_load_type_component_value = "component";
 static const char *k_load_type_parallel_value = "parallel";
 static const char *k_load_type_series_value = "series";
+static const char *k_load_type_parametric_value = "parametric";
 
 /* Filter stage JSON symbols */
 

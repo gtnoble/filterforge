@@ -1,9 +1,12 @@
+#define _XOPEN_SOURCE 700
+
 #include <jansson.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
+#include <math.h>
 
 #include "filter.h"
 #include "component.h"
@@ -124,7 +127,7 @@ Load *load_from_config(json_t *load_config) {
         }
 
         size_t num_loads = json_array_size(element);
-        Load **loads = malloc(sizeof(Load *));
+        Load **loads = malloc(sizeof(Load *) * num_loads);
         for (size_t i = 0; i < num_loads; i++) {
             loads[i] = load_from_config(json_array_get(element, i));
         }
@@ -137,6 +140,22 @@ Load *load_from_config(json_t *load_config) {
 
         free(loads);
     }
+    else if (load_type == PARAMETRIC_LOAD) {
+        if (! json_is_array(element)) {
+            fprintf(stderr, "error: Parametric load elements must be an array");
+            exit(EXIT_FAILURE);
+        }
+
+        size_t num_measurements = json_array_size(element);
+        Measurement *measurements = malloc(sizeof(Measurement) * num_measurements);
+        for (size_t i = 0; i < num_measurements; i++) {
+            measurements[i] = measurement_from_config(json_array_get(element, i));
+        }
+
+        load = new_parametric_load(measurements, num_measurements);
+
+        free(measurements);
+    }
     else if (load_type == COMPONENT_LOAD) {
         load = new_component_load(component_from_config(element));
     }
@@ -145,6 +164,29 @@ Load *load_from_config(json_t *load_config) {
     }
 
     return load;
+}
+
+Measurement measurement_from_config(json_t *measurement_config) {
+
+    static const char *k_measurement_config_schema = "[F ,[F, F]]";
+    json_error_t error;
+
+    double value_real_part;
+    double value_imag_part;
+    double ordinary_frequency;
+    if (json_unpack_ex(
+        measurement_config,
+        &error, 0, k_measurement_config_schema,
+        &ordinary_frequency,
+        &value_real_part,
+        &value_imag_part
+    ) == -1)
+        handle_error(&error);
+
+    return (Measurement) {
+        .frequency = ordinary_frequency * 2 * M_PI, 
+        .value = CMPLX(value_real_part, value_imag_part)
+    };
 }
 
 Component component_from_config(json_t *component_config) {
@@ -211,6 +253,9 @@ LoadType load_type_string_to_code(const char load_type[]) {
     LoadType load_type_code;
     if (! strcmp(load_type, k_load_type_component_value)) {
         load_type_code = COMPONENT_LOAD;
+    }
+    else if (! strcmp(load_type, k_load_type_parametric_value)) {
+        load_type_code = PARAMETRIC_LOAD;
     }
     else if (! strcmp(load_type, k_load_type_parallel_value)) {
         load_type_code = PARALLEL_LOAD;

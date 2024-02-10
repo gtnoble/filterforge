@@ -173,6 +173,9 @@ void load_type_code_to_string(LoadType type_code, char type_str[]) {
         case COMPONENT_LOAD:
             strcpy(type_str, k_load_type_component_value);
             break;
+        case PARAMETRIC_LOAD:
+            strcpy(type_str, k_load_type_parametric_value);
+            break;
         case SERIES_LOAD:
             strcpy(type_str, k_load_type_series_value);
             break;

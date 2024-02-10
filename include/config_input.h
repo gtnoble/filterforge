@@ -12,5 +12,6 @@ FilterStage *stage_from_config(json_t *stage_config);
 Filter *filter_from_config(json_t *filter_config);
 Load *load_from_config(json_t *load_config);
 Component component_from_config(json_t *component_config);
+Measurement measurement_from_config(json_t *measurement_config);
 
 #endif

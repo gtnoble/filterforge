@@ -4,18 +4,20 @@
 #include <complex.h>
 #include "component.h"
 #include "random.h"
+#include "measurement.h"
 
 typedef enum {
     COMPONENT_LOAD,
     SERIES_LOAD,
-    PARALLEL_LOAD
+    PARALLEL_LOAD,
+    PARAMETRIC_LOAD
 } LoadType;
 
 struct Load;
 typedef struct Load Load;
 typedef struct Load {
     LoadType type;
-    union {Load **loads; Component component;} element;
+    union {Load **loads; Component component; Measurement *measurements;} element;
     size_t num_elements;
 } Load;
 
@@ -30,4 +32,5 @@ void free_load(Load *load);
 void load_random_update(Load *load, MTRand *prng);
 Load *new_component_load(Component component);
 Load *new_compound_load(Load **loads, size_t num_loads, LoadType type);
+Load *new_parametric_load(const Measurement *measurements, size_t n_measurements);
 #endif

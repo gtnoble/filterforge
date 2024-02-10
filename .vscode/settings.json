@@ -12,6 +12,7 @@
         "i3/*.conf": "i3",
         "polybar/config": "ini",
         "polybar/*.conf": "ini",
-        "stdlib.h": "c"
+        "stdlib.h": "c",
+        "math.h": "c"
     }
 }

@@ -40,6 +40,23 @@ Load *new_compound_load(Load **loads, size_t num_loads, LoadType type) {
     return load;
 }
 
+Load *new_parametric_load(const Measurement *measurements, size_t n_measurements) {
+    Load *load = malloc(sizeof(Load));
+    if (load == NULL) {
+        return NULL;
+    }
+
+    Measurement *parametric_measurements = malloc(n_measurements * sizeof(Measurement));
+    copy_measurements(measurements, parametric_measurements, n_measurements);
+    sort_measurements(parametric_measurements, n_measurements);
+
+    load->type = PARAMETRIC_LOAD;
+    load->num_elements = n_measurements;
+    load->element.measurements = parametric_measurements;
+
+    return load;
+}
+
 bool loads_equal(Load *load1, Load *load2) {
     assert(load1 != NULL);
     assert(load2 != NULL);
@@ -62,6 +79,13 @@ bool loads_equal(Load *load1, Load *load2) {
         }
         return true;
     }
+    else if (load1->type == PARAMETRIC_LOAD) {
+        for (size_t i = 0; i < load1->num_elements; i++) {
+            if (! measurements_equal(load1->element.measurements[i], load2->element.measurements[i]))
+                return false;
+        }
+        return true;
+    }
     assert(false);
     return false;
 }
@@ -73,6 +97,9 @@ Load *duplicate_load(
 
     if (load->type == COMPONENT_LOAD) {
         return new_component_load(load->element.component);
+    }
+    else if (load->type == PARAMETRIC_LOAD) {
+        return new_parametric_load(load->element.measurements, load->num_elements);
     }
     else if (load->type == SERIES_LOAD || load->type == PARALLEL_LOAD) {
 
@@ -117,6 +144,10 @@ void free_load(Load *load) {
         case COMPONENT_LOAD:
             free(load);
             break;
+        case PARAMETRIC_LOAD:
+            free(load->element.measurements);
+            free(load);
+            break;
         case SERIES_LOAD:
         case PARALLEL_LOAD:
             free(load->element.loads);
@@ -133,6 +164,7 @@ void free_load_node(Load *load) {
         return; 
     switch (load->type) {
         case COMPONENT_LOAD:
+        case PARAMETRIC_LOAD:
             free_load(load);
             break;
         case SERIES_LOAD:
@@ -161,6 +193,8 @@ void load_random_update(Load *load, MTRand *prng) {
                 load_random_update(load->element.loads[i], prng);
             }
             break;
+        case PARAMETRIC_LOAD:
+            break;
         default:
             assert(false);
     }
@@ -174,6 +208,13 @@ void copy_load(Load *source, Load *destination) {
     switch (source->type) {
         case COMPONENT_LOAD:
             copy_component(source->element.component, &destination->element.component);
+            break;
+        case PARAMETRIC_LOAD:
+            copy_measurements(
+                destination->element.measurements, 
+                source->element.measurements, 
+                source->num_elements
+            );
             break;
         case PARALLEL_LOAD:
         case SERIES_LOAD:
@@ -194,6 +235,9 @@ double complex load_impedance(double angular_frequency, Load *load) {
     switch(load->type) {
         case COMPONENT_LOAD:
             impedance = component_impedance(angular_frequency, load->element.component);
+            break;
+        case PARAMETRIC_LOAD:
+            impedance = interpolate(load->element.measurements, load->num_elements, angular_frequency);
             break;
         case SERIES_LOAD: {
             double complex sum_impedance = 0;

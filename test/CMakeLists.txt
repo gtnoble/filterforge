@@ -25,4 +25,8 @@ add_executable(test_two_port_network two_port_network.test.c)
 target_link_libraries(test_two_port_network filterforge)
 add_test(NAME TestTwoPortNetwork COMMAND test_two_port_network)
 
+add_executable(test_measurement measurement.test.c)
+target_link_libraries(test_measurement filterforge)
+add_test(NAME TestMeasurement COMMAND test_measurement)
+
 configure_file(test_filter.json test_filter.json COPYONLY)
